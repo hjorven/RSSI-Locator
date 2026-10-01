@@ -21,9 +21,13 @@ case "${1:-deploy}" in
 deploy)
   echo ">> 1/5 Code nach ${PI_USER}@${PI_HOST}:${REMOTE_DIR} kopieren"
   "${SSH[@]}" "mkdir -p '${REMOTE_DIR}'"
+  # settings.json wird ausdrücklich vom Löschen ausgenommen: es enthält die
+  # Kalibrierwerte des Geräts, steht in .gitignore und darf ein Deployment
+  # nicht überleben lassen.
   rsync -az --delete \
     --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
     --exclude 'firmware/common/config.py' \
+    --exclude 'server/settings.json' \
     "${ROOT}/" "${PI_USER}@${PI_HOST}:${REMOTE_DIR}/"
 
   echo ">> 2/5 bis 4/5 venv, Abhaengigkeiten, Unit-Tests auf dem Pi"

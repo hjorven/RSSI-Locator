@@ -14,11 +14,20 @@ Kern der Schätzung:
 
 from __future__ import annotations
 
+import json
+import logging
 import math
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+
+log = logging.getLogger("rssi")
+
+
+def log_warn(msg: str, *args: object) -> None:
+    log.warning(msg, *args)
 
 # ---------------------------------------------------------------------------
 # Glättung
@@ -224,7 +233,12 @@ def trilaterate_linear(
 
 @dataclass
 class Settings:
-    """Laufende Parameter. Über `/api/settings` änderbar, wirkt sofort."""
+    """Laufende Parameter. Über `/api/settings` änderbar, wirkt sofort.
+
+    Wird als `settings.json` neben dem Server gespeichert, damit kalibrierte
+    Werte einen Neustart und ein Deployment überleben. Messdaten bleiben
+    weiterhin nur im Arbeitsspeicher.
+    """
 
     node_distance: float = 4.0
     rssi_1m_ble: float = -59.0
@@ -236,7 +250,7 @@ class Settings:
     min_sigma_rssi: float = 3.0
     stale_after: float = 10.0
     drop_after: float = 120.0
-    node_offline_after: float = 5.0
+    node_offline_after: float = 12.0
     max_distance: float = 30.0
 
     def to_dict(self) -> Dict[str, float]:
@@ -281,6 +295,35 @@ class Settings:
             setattr(self, key, min(hi, max(lo, val)))
         if self.drop_after <= self.stale_after:
             self.drop_after = self.stale_after + 1.0
+
+    @classmethod
+    def load(cls, path: Path) -> "Settings":
+        """Liest gespeicherte Werte. Fehlende oder kaputte Datei -> Vorgaben.
+
+        Eine kaputte Datei wird nicht überschrieben: lieber die Vorgaben
+        benutzen und den Fehler sehen, als beim nächsten Speichern still die
+        mühsam kalibrierten Werte zu verlieren.
+        """
+        settings = cls()
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return settings
+        except (OSError, ValueError) as exc:
+            log_warn("Einstellungen in %s unlesbar (%s), nutze Vorgaben", path, exc)
+            return settings
+        if not isinstance(raw, dict):
+            log_warn("Einstellungen in %s sind kein Objekt, nutze Vorgaben", path)
+            return settings
+        settings.update(raw)
+        return settings
+
+    def save(self, path: Path) -> None:
+        """Schreibt die aktuellen Werte atomar, ohne die alten zu verlieren."""
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8")
+        tmp.replace(path)
 
 
 @dataclass

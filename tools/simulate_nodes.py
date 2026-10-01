@@ -8,6 +8,11 @@ sichtbar arbeiten.
 
     python3 tools/simulate_nodes.py --url http://127.0.0.1:8099/ingest
     python3 tools/simulate_nodes.py --devices 8 --hz 2 --speed 2
+
+Die Geometrie wird beim Server erfragt, damit Simulator und Server dasselbe
+rechnen. Für Nodes, die der Server noch nicht kennt, legt er sie nach dem
+gleichen Muster selbst fest. Abweichungen lassen sich mit `--node-position
+ID:X,Y` erzwingen.
 """
 
 from __future__ import annotations
@@ -23,6 +28,40 @@ import urllib.request
 # Funkraum für die Simulation: 6 m x 4 m, Node A bei (0,0), Node B bei (D,0).
 NAMES_BLE = ["tag1", "schluessel", "kopfhoerer", "beacon-01", "sensor-kueche"]
 NAMES_WIFI = ["FRITZ!Box", "WLAN-Gast", "Nachbar-2.4"]
+
+
+def fetch_layout(url: str) -> tuple[dict, float]:
+    """Fragt die tatsächliche Node-Geometrie beim Server ab.
+
+    Liefert (Positionen je Node-ID, Nodeabstand). Der Server legt die ersten
+    beiden Nodes auf die Basislinie und weitere auf die y-Achse; rechnet der
+    Simulator mit einer anderen Annahme, sind alle erwarteten Positionen
+    systematisch verschoben. Noch nicht bekannte Nodes bekommen einen
+    Platzhalter, bis der Server sie kennt.
+    """
+    state = url[: url.rindex("/")] + "/api/state" if "/ingest" in url else url + "/api/state"
+    try:
+        with urllib.request.urlopen(state, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+        pos = {n["id"]: (float(n["x"]), float(n["y"])) for n in data.get("nodes", [])}
+        return pos, float(data["settings"]["node_distance"])
+    except Exception:                                   # noqa: BLE001
+        return {}, 4.0
+
+
+def layout_for(node_ids: list[str], known: dict, node_distance: float) -> dict:
+    """Node-Positionen, mit den vom Server gemeldeten wo vorhanden."""
+    pos = {}
+    for i, nid in enumerate(node_ids):
+        if nid in known:
+            pos[nid] = known[nid]
+        elif i == 0:
+            pos[nid] = (0.0, 0.0)
+        elif i == 1:
+            pos[nid] = (node_distance, 0.0)
+        else:
+            pos[nid] = (0.0, node_distance * (i - 1))
+    return pos
 
 
 def post_json(url: str, payload: dict, timeout: float = 2.0) -> bool:
@@ -76,7 +115,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Fake-Nodes für den RSSI-Locator")
     ap.add_argument("--url", default="http://127.0.0.1:8099/ingest")
     ap.add_argument("--nodes", default="A,B", help="Node-IDs, kommagetrennt")
-    ap.add_argument("--device-distance", type=float, default=4.0)
+    ap.add_argument(
+        "--node-position",
+        action="append",
+        default=[],
+        metavar="ID:X,Y",
+        help="Position eines Nodes fest vorgeben, z. B. --node-position A:0,0. "
+             "Ohne diese Angaben wird das Layout beim Server erfragt.",
+    )
     ap.add_argument("--devices", type=int, default=5)
     ap.add_argument("--hz", type=float, default=1.0, help="Sendrate je Node")
     ap.add_argument("--speed", type=float, default=1.0, help="Zeitraffer der Bewegung")
@@ -87,9 +133,19 @@ def main() -> int:
         random.seed(args.seed)
 
     node_ids = [n.strip() for n in args.nodes.split(",") if n.strip()]
-    node_pos = {}
-    for i, nid in enumerate(node_ids):
-        node_pos[nid] = (0.0, 0.0) if i == 0 else (args.device_distance, 0.0)
+    fest = {}
+    for angabe in args.node_position:
+        nid, _, xy = angabe.partition(":")
+        if not xy:
+            ap.error(f"--node-position braucht ID:X,Y, bekam {angabe!r}")
+        try:
+            x, y = (float(v) for v in xy.split(","))
+        except ValueError:
+            ap.error(f"--node-position {angabe!r}: X und Y müssen Zahlen sein")
+        fest[nid.strip()] = (x, y)
+    known, node_distance = fetch_layout(args.url)
+    fest.update({k: v for k, v in known.items() if k in fest})   # CLI schlägt Server
+    node_pos = layout_for(node_ids, fest, node_distance)
 
     targets: list[Target] = []
     for i in range(args.devices):
@@ -102,6 +158,8 @@ def main() -> int:
     path_loss = {"ble": 2.5, "wifi": 3.0}
 
     print(f"Sende {len(node_ids)} Nodes an {args.url}, {args.hz:.1f} Hz", flush=True)
+    print("  Node-Layout: " + ", ".join(f"{n}=({node_pos[n][0]:.2f},{node_pos[n][1]:.2f})"
+                                        for n in node_ids), flush=True)
     interval = 1.0 / max(0.1, args.hz)
     last = time.time()
     t0 = last

@@ -27,8 +27,10 @@ Flashen von `RPI_PICO2_W` da ist, siehe `docs/hardware.md`.
   laufende Tests.
 - Jede Berechnung in `server/positioning.py` braucht einen Unit-Test in `server/tests/`.
   Tests müssen ohne Server laufen: `pytest server/tests`.
-- Server: Python 3, FastAPI + uvicorn, **keine Datenbank**, Daten nur im Arbeitsspeicher,
-  keine schweren Abhängigkeiten (kein numpy, kein scipy).
+- Server: Python 3, FastAPI + uvicorn, **keine Datenbank**, Messdaten nur im
+  Arbeitsspeicher. Nur die Einstellungen werden als `server/settings.json`
+  gespeichert (in `.gitignore`), damit Kalibrierwerte Neustart und Deployment
+  überstehen. Keine schweren Abhängigkeiten (kein numpy, kein scipy).
 - Firmware: MicroPython, Konfiguration ausschließlich in `firmware/common/config.py`.
   `config.py` ist in `.gitignore`, `config.example.py` wird eingecheckt. Keine
   WLAN-Passwörter ins Git.

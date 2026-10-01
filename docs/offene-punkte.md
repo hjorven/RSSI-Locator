@@ -8,17 +8,23 @@
 - Positionsberechnung: Median-Glättung, Log-Distance, Kreis-Intersection für
   zwei Nodes, Least-Squares ab drei Nodes, Unsicherheitsellipsen
 - Simulator mit Bewegung, Rauschen, Ausreißern und Wegfallen der Geräte
-- 33 Unit-Tests für die Rechnung, 8 für den Node-Parser, End-to-End-Rauchtest
+- 36 Unit-Tests für die Rechnung, 8 für den Node-Parser, End-to-End-Rauchtest
   inklusive WebSocket
 - Deployment auf dem Pi 4 B per venv und systemd, Autostart aktiv
+- Einstellungen werden als `server/settings.json` gespeichert und überleben
+  Neustart und Deployment; Messdaten bleiben im Arbeitsspeicher
+- Simulator erfragt die Node-Geometrie beim Server, statt sie anzunehmen.
+  Zusammen mit dem Rauchtest, der eigene Test-Nodes verwendet, stimmen
+  Erwartungswerte und Serverrechnung wieder überein
 - Firmware für Pico 2 W (WLAN, abwechselnder BLE-/WLAN-Scan, HTTP-POST per
   Socket, BLE-Beacon zur Node-Erkennung)
 - Node-Client für Linux (`pi-node/`): WLAN-Vollscan über `iw` mit echten dBm,
   BLE-Scan über `bleak`, läuft als Node B auf dem Pi 4 B
 - Pico 2 W mit MicroPython 1.29.0 geflasht und als Node A in Betrieb: BLE- und
-  WLAN-Scan, HTTP-POST, Beacon aktiv. Drei Fehler der ersten Firmware-Version
+  WLAN-Scan, HTTP-POST, Beacon aktiv. Sechs Fehler der ersten Firmware-Version
   sind gefunden und behoben (`bluetooth.ble` existiert nicht mehr, `wlan.scan()`
-  nimmt kein Argument und liefert Tupel, Start-Timeout beim ersten Senden)
+  nimmt kein Argument und liefert Tupel, Start-Timeout beim ersten Senden,
+  fehlendes `global` bei `ble_buffer`/`wifi_buffer` und bei `scan_done`)
 
 ## Offen
 
@@ -28,6 +34,11 @@
 - Die serielle Ausgabe des Nodes ist die einzige Anzeige. Für den Dauerbetrieb
   wäre eine Logdatei auf dem Board oder ein Heartbeat-Feld in der Weboberfläche
   praktisch.
+- Die beiden Nodes stehen derzeit nur 40 bis 50 cm auseinander. Das ist für die
+  Positionierung zu wenig: bei 45 cm liegt der mittlere Positionsfehler bei
+  1,9 m, bei 1,5 m Abstand nur noch bei 1,2 m, bei 2 m bei 1,1 m. Siehe
+  [Nodeabstand D](kalibrierung.md#nodeabstand-d-der-wichtigste-wert-ueberhaupt).
+  **Für brauchbare Positionen die Nodes etwa 2 m auseinanderstellen.**
 
 ### Nodeabstand automatisch messen
 

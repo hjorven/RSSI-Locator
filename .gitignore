@@ -8,6 +8,9 @@ venv/
 firmware/common/config.py
 config.py
 
+# Kalibrierwerte des laufenden Geräts
+server/settings.json
+
 # MicroPython-Ports
 firmware/node/lib/
 

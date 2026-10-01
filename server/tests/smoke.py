@@ -48,6 +48,26 @@ async def check_websocket(base: str, messages: int = 3) -> None:
 def main() -> int:
     base = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8099").rstrip("/")
     print("healthz:", get_json(base + "/healthz"))
+    # Der Server legt die Nodes nach ID sortiert fest: die ersten beiden auf die
+    # Basislinie (0,0) und (D,0), weitere auf die y-Achse. Welche Plätze die
+    # Test-Nodes bekommen, haengt also davon ab, welche echten Nodes laufen.
+    # Positionen deshalb aus dem echten Zustand nachbilden und mitgeben.
+    echte = [n["id"] for n in get_json(base + "/api/state")["nodes"]
+             if n["id"] not in TEST_NODES]
+    d = get_json(base + "/api/state")["settings"]["node_distance"]
+    reihenfolge = sorted(echte + list(TEST_NODES))
+    positionen = []
+    for idx, nid in enumerate(reihenfolge):
+        if idx == 0:
+            pos = (0.0, 0.0)
+        elif idx == 1:
+            pos = (d, 0.0)
+        else:
+            pos = (0.0, d * (idx - 1))
+        if nid in TEST_NODES:
+            positionen += ["--node-position", f"{nid}:{pos[0]:.2f},{pos[1]:.2f}"]
+    print(f"D={d} m, Test-Nodes an {dict(zip(TEST_NODES, positionen[1::2]))}")
+
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -59,6 +79,7 @@ def main() -> int:
             "--nodes",
             ",".join(TEST_NODES),
         ]
+        + positionen
     )
     try:
         asyncio.run(check_websocket(base))

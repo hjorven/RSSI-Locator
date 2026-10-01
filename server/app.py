@@ -19,16 +19,19 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from positioning import Locator
+from positioning import Locator, Settings
 
 log = logging.getLogger("rssi")
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 PUSH_HZ = float(os.environ.get("PUSH_HZ", "2"))
+#: Kalibrierwerte. Liegt neben dem Server, damit sie Neustart und Deployment
+#: überleben. Messdaten bleiben nur im Arbeitsspeicher.
+SETTINGS_PATH = Path(os.environ.get("SETTINGS_FILE", BASE_DIR / "settings.json"))
 
 app = FastAPI(title="RSSI-Locator", docs_url=None, redoc_url=None)
-locator = Locator()
+locator = Locator(Settings.load(SETTINGS_PATH))
 
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -108,6 +111,18 @@ async def state() -> dict:
     return locator.snapshot()
 
 
+def save_settings() -> None:
+    """Kalibrierwerte auf die Platte schreiben. Fehler nur melden.
+
+    Der Server läuft auch ohne Schreibrecht weiter, dann sind die Werte nach
+    einem Neustart eben wieder weg.
+    """
+    try:
+        locator.settings.save(SETTINGS_PATH)
+    except OSError as exc:
+        log.warning("Einstellungen nicht speicherbar (%s): %s", SETTINGS_PATH, exc)
+
+
 @app.post("/api/settings")
 async def update_settings(values: dict) -> dict:
     """Parameter der Positionsschätzung ändern (D, RSSI_1m, n, Filter)."""
@@ -124,6 +139,7 @@ async def update_settings(values: dict) -> dict:
                 for src in device.sources.values():
                     src.filter.set_window(after["rssi_window"])
         log.info("Settings geändert: %s", changed)
+        save_settings()
     locator.recompute()
     return {"ok": True, "settings": after, "changed": changed}
 

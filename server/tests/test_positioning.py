@@ -8,10 +8,13 @@ Ausfuehren:
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import sys
+import tempfile
 import time
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -195,6 +198,41 @@ def test_settings_update_and_clamp():
     # drop_after muss groesser als stale_after bleiben
     s.update({"stale_after": 30.0, "drop_after": 20.0})
     assert s.drop_after > s.stale_after
+
+
+def test_settings_save_and_load_roundtrip():
+    with tempfile.TemporaryDirectory() as tmp:
+        pfad = Path(tmp) / "settings.json"
+        s = Settings()
+        s.update({"node_distance": 0.45, "rssi_1m_ble": -63.0})
+        s.save(pfad)
+        geladen = Settings.load(pfad)
+        assert approx(geladen.node_distance, 0.45)
+        assert approx(geladen.rssi_1m_ble, -63.0)
+        # Nur bekannte Felder, unbekannte werden beim Laden verworfen.
+        pfad.write_text(json.dumps({"node_distance": 1.5, "quatsch": 7}))
+        assert approx(Settings.load(pfad).node_distance, 1.5)
+
+
+def test_settings_load_fehlt_oder_kaputt():
+    with tempfile.TemporaryDirectory() as tmp:
+        fehlt = Path(tmp) / "gibtsnicht.json"
+        assert approx(Settings.load(fehlt).node_distance, 4.0)  # Vorgabe
+        kaputt = Path(tmp) / "kaputt.json"
+        kaputt.write_text("{kein json")
+        assert approx(Settings.load(kaputt).node_distance, 4.0)  # Vorgabe
+        # Die kaputte Datei darf nicht überschrieben werden, sonst ist die
+        # mühsam kalibrierte Historie beim nächsten Speichern weg.
+        assert kaputt.read_text() == "{kein json"
+
+
+def test_settings_save_ist_atomar():
+    with tempfile.TemporaryDirectory() as tmp:
+        pfad = Path(tmp) / "settings.json"
+        Settings().save(pfad)
+        Settings().save(pfad)
+        assert not (Path(str(pfad) + ".tmp")).exists()
+        assert approx(Settings.load(pfad).node_distance, 4.0)
 
 
 def _rssi_at(dist, rssi_1m=-59.0, n=2.5):

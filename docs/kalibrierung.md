@@ -12,6 +12,9 @@ Mittelpunkt zwischen den Antennen, nicht zwischen den Gehäusekanten. Den Wert
 in `D` eintragen. Bei 1 cm Genauigkeit lohnt sich das: die Positionsschätzung
 rechnet `D` direkt in die x-Koordinate ein.
 
+Wie groß `D` sein sollte und warum dieser Wert wichtiger ist als alle
+anderen, steht in [Nodeabstand D](#nodeabstand-d-der-wichtigste-wert-ueberhaupt).
+
 ## 2. RSSI 1 m und n bestimmen
 
 Vorgehen: Ein Gerät (am besten ein BLE-Beacon mit festem Sendeleistung) an
@@ -65,20 +68,62 @@ messen lassen, dann mittleren Fehler und Streuung notieren. Erwartbar sind
 1 bis 3 m. Wenn der Fehler stark richtungsabhängig ist (immer zu weit links),
 stimmt der Umgebungsfaktor nicht oder die Antennen sitzen unterschiedlich.
 
-## Einstellungen gehen bei einem Neustart verloren
+## Nodeabstand D: der wichtigste Wert überhaupt
 
-Der Server hält die Einstellungen bewusst nur im Arbeitsspeicher (keine
-Datenbank). Nach `systemctl restart rssi-locator` gelten wieder die Vorgaben.
-Deshalb nach jedem Serverstart:
+`D` ist der Abstand zwischen den beiden Antennen. Er entscheidet über die
+Genauigkeit stärker als alle anderen Parameter zusammen, und zwar so:
+
+| D | Gerät 1 m entfernt | 2 m | 4 m | Bewertung |
+|---|------------------:|----:|----:|-----------|
+| 0,45 m | 0,58 m | 1,29 m | 3,74 m | unbrauchbar |
+| 1,5 m | 0,37 m | 0,70 m | 2,48 m | gut für 1 bis 2 m |
+| 2,0 m | 0,85 m | 0,31 m | 2,18 m | gut für 1 bis 3 m |
+| 3,0 m | 1,84 m | 0,73 m | 1,40 m | gut für 2 bis 5 m |
+| 4,0 m | 2,83 m | 1,70 m | 0,62 m | gut ab 4 m |
+
+Mittlerer Positionsfehler, 3 dBm Messrauschen, 60 Messungen je Gerät.
+
+Der Grund ist geometrisch: aus zwei Kreisen um A und B mit Radius r1 und r2
+berechnet sich die Position. Je näher A und B beieinander liegen, desto
+schlechter sind diese beiden Kreise voneinander unterscheidbar. Bei 45 cm
+schmolzen die Kreise zu fast gleichen Radien, und die Position konnte in
+beliebiger Richtung verrutschen.
+
+Faustregel: **D etwa halb so groß wie der größte Abstand, den du messen
+willst.** Willst du Geräte bis 4 m orten, sind 2 m Nodeabstand richtig. Willst
+du die ganze Wohnung abdecken, gehören die Nodes an gegenüberliegende Ecken.
+
+Die beiden Nodes gehören auf dieselbe Höhe (gleiche Tischkante) und mit den
+Antennen in dieselbe Richtung, sonst kommt ein systematischer Versatz dazu.
+
+## Einstellungen bleiben erhalten
+
+Der Server speichert die Einstellungen in `server/settings.json` und lädt sie
+beim Start. Kalibrierte Werte überstehen damit Neustart und Deployment.
+Ausschließlich die Einstellungen werden gespeichert, die Messdaten bleiben im
+Arbeitsspeicher.
+
+Die Datei steht in `.gitignore` und ist im `rsync` von `deploy/deploy.sh`
+ausgenommen. Das ist beides nötig: `--delete` würde sie beim nächsten
+Deployment sonst überschreiben, weil sie nicht im Repository liegt. Wer die
+Datei versehentlich doch löscht, setzt die Werte einmal neu und sie werden
+beim nächsten Speichern wieder angelegt.
+
+Nach einem Neustart prüfen, ob die Datei da ist und gültig ist:
 
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"node_offline_after": 12}' \
-  http://192.168.178.43:8099/api/settings
+ssh pi@192.168.178.43 'cat ~/rssi-locator/server/settings.json'
+ssh pi@192.168.178.43 'systemctl status rssi-locator --no-pager' | grep -i settings
 ```
 
-`node_offline_after` 12 s statt 5 s: ein Pico 2 W braucht bis zu 5 s für einen
-BLE-Scan und nochmal bis zu 4 s für einen WLAN-Vollscan. Mit den Vorgabe-Werten
-flackert der Node während des WLAN-Scans im Browser als "offline".
+Ist die Datei weg oder unlesbar, startet der Server mit den Vorgaben und
+schreibt erst beim nächsten Speichern neu. Eine kaputte Datei wird bewusst
+nicht überschrieben, damit die alten Werte nicht unbemerkt verloren gehen.
+
+`node_offline_after` steht auf 12 s statt der ursprünglichen 5 s: ein Pico 2 W
+braucht bis zu 5 s für einen BLE-Scan und nochmal bis zu 4 s für einen
+WLAN-Vollscan. Mit den Vorgabe-Werten gilt der Node während des WLAN-Scans im
+Browser kurzzeitig als "offline".
 
 ## Grenzen des Modells
 
