@@ -16,6 +16,7 @@ Node B (Pico 2 W) --/
 |-------|--------|-------|
 | 1 | Server (`/ingest`, `/ws`, Weboberfläche), Simulator, Tests | fertig, läuft auf dem Pi |
 | 2/3 | Firmware für Pico 2 W (WLAN, BLE-Scan, Senden) | geschrieben, nicht getestet (kein Pico 2 W angeschlossen) |
+| 2/3 | Node für Linux im Pi 4 B (`pi-node/`) | fertig, läuft als Node A |
 | 4 | Kalibrierung mit echtem Test-Beacon | offen |
 | 5 | Autostart auf dem Pi | fertig (systemd, `enabled`) |
 | 6 | 3. Node, Heatmap, Verlauf | offen |
@@ -42,6 +43,7 @@ server/.venv/bin/python tools/simulate_nodes.py --url http://127.0.0.1:8099/inge
 
 ```bash
 python3 server/tests/test_positioning.py     # 33 Tests, ohne pytest
+python3 pi-node/test_node.py                 # 8 Tests, ohne pytest
 server/.venv/bin/python server/tests/smoke.py http://127.0.0.1:8099   # inkl. WebSocket
 server/.venv/bin/python tools/check_page.py http://127.0.0.1:8099      # Browser prüfen
 ```
@@ -76,6 +78,21 @@ bash tools/flash_node.sh /dev/ttyACM0
 
 Für Node B `firmware/common/config.py` mit `NODE_ID = "B"` und
 `BEACON_NAME = "RSSI-Node-B"` anpassen, dann das Skript erneut ausführen.
+
+## Node auf dem Pi statt auf dem Pico
+
+Solange kein Pico 2 W da ist, misst der Pi 4 B selbst: er hat WLAN und
+Bluetooth an Bord und sendet im selben Format wie die Firmware. Aktueller Stand
+sind 39 Geräte (BLE + Access Points) mit echten dBm-Werten, Node A läuft als
+systemd-Dienst `rssi-node`.
+
+```bash
+bash deploy/deploy.sh                                       # Code kopieren
+ssh pi@192.168.178.43 'bash /home/pi/rssi-locator/pi-node/install.sh'
+ssh pi@192.168.178.43 'sudo journalctl -u rssi-node -f'      # Log
+```
+
+Details in [docs/hardware.md](docs/hardware.md#zwischenlösung-der-pi-4-b-als-node).
 
 ## Kalibrierung
 

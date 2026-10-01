@@ -3,10 +3,16 @@
 ## Aktueller Stand
 
 Angeschlossen ist ein **Pico 2 ohne WLAN** (`/dev/ttyACM0`, USB-ID `2e8a:000b`),
-geflasht mit **CircuitPython 9.2**. Dieses Board hat kein `network`-Modul, kann
-also weder WLAN noch BLE. Die Firmware in `firmware/` ist für
-**Pico 2 W + MicroPython** geschrieben und konnte deshalb noch nicht auf
-echter Hardware laufen.
+geflasht mit **CircuitPython 9.2.0-beta**. Ausgelesen und bestätigt:
+
+```
+Machine: Raspberry Pi Pico 2 with rp2350a
+network, wifi, bluetooth, socketpool, ssl: fehlen alle
+```
+
+Ein Pico 2 W ist nicht nur eine andere Firmware, sondern eine andere Platine mit
+Funkmodul (RM2/CYW43). Auch mit MicroPython bekäme dieses Board kein WLAN und
+kein BLE, die Firmware aus `firmware/` läuft darauf also nie.
 
 Erkennen, was angeschlossen ist:
 
@@ -15,6 +21,41 @@ mpremote connect list
 mpremote exec "import os; print(os.uname().machine)"
 mpremote exec "import network"      # nur beim Pico 2 W ein Erfolg
 ```
+
+`tools/flash_node.sh` prüft `network` und `bluetooth` und bricht mit dieser
+Meldung ab, statt nutzlose Dateien auf ein Board ohne Funk zu kopieren:
+
+```
+FEHLER: Das Board hat kein network-Modul.
+```
+
+## Zwischenlösung: der Pi 4 B als Node
+
+Der Pi 4 B hat WLAN (`wlan0`) und Bluetooth (`hci0`) an Bord und kann dieselben
+Messungen machen wie der Pico 2 W. Der Node-Client liegt in `pi-node/` und
+spricht dasselbe `/ingest`-Format wie die Firmware.
+
+```bash
+bash deploy/deploy.sh                 # Code auf den Pi kopieren
+ssh pi@192.168.178.43 'bash /home/pi/rssi-locator/pi-node/install.sh'
+```
+
+Der Dienst `rssi-node` läuft danach dauerhaft, ebenso wie der Server. Er
+braucht `CAP_NET_ADMIN` für `iw` (Schnittstelle hochfahren und scannen); der
+BLE-Scan über `bleak` läuft ohne Root. Der Pi hängt am Ethernet und funkt nur
+zum Messen — deshalb ist kein WLAN-Passwort nötig, im Gegensatz zum Pico.
+
+Konfiguration per Drop-in:
+
+```bash
+sudo systemctl edit rssi-node         # NODE_ID, IFACE, NODE_URL
+bash deploy/deploy.sh && ssh pi@192.168.178.43 'sudo systemctl restart rssi-node'
+```
+
+| Node | `NODE_ID` | Ort |
+|------|-----------|-----|
+| A    | `A` (Vorgabe) | Pi 4 B, `rssi-node` |
+| B    | `B` | später der Pico 2 W |
 
 ## MicroPython auf den Pico 2 W flashen
 

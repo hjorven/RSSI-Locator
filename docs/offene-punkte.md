@@ -8,10 +8,14 @@
 - Positionsberechnung: Median-Glättung, Log-Distance, Kreis-Intersection für
   zwei Nodes, Least-Squares ab drei Nodes, Unsicherheitsellipsen
 - Simulator mit Bewegung, Rauschen, Ausreißern und Wegfallen der Geräte
-- 31 Unit-Tests für die Rechnung, End-to-End-Rauchtest inklusive WebSocket
+- 33 Unit-Tests für die Rechnung, 8 für den Node-Parser, End-to-End-Rauchtest
+  inklusive WebSocket
 - Deployment auf dem Pi 4 B per venv und systemd, Autostart aktiv
 - Firmware für Pico 2 W (WLAN, abwechselnder BLE-/WLAN-Scan, HTTP-POST per
   Socket, BLE-Beacon zur Node-Erkennung)
+- Node-Client für Linux (`pi-node/`): WLAN-Vollscan über `iw` mit echten dBm,
+  BLE-Scan über `bleak`, läuft als Node A auf dem Pi 4 B und liefert 39 Geräte
+  in die Weboberfläche
 
 ## Offen
 
@@ -19,8 +23,10 @@
 
 - Kein Pico 2 W angeschlossen. Die Firmware ist ungetestet; die ersten beiden
   Testläufe (WLAN, dann BLE, dann zusammen) stehen aus.
-- Der angeschlossene Pico 2 (ohne W, CircuitPython) kann weder scannen noch
-  senden.
+- Der angeschlossene Pico 2 (ohne W, CircuitPython 9.2.0-beta) kann weder
+  scannen noch senden — ausgelesen und bestätigt, es fehlen `network`, `wifi`
+  und `bluetooth`. Ein Pico 2 W ist eine andere Platine, MicroPython hilft dort
+  nicht.
 
 ### Nodeabstand automatisch messen
 

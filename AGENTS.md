@@ -2,18 +2,22 @@
 
 Projekt: Zwei Raspberry Pi Pico 2 W messen RSSI von BLE-Geräten und Access Points und
 schicken die Messwerte per HTTP an einen Raspberry Pi 4 B. Der Server schätzt die
-Positionen und zeigt sie auf einer Webseite live an.
+Positionen und zeigt sie auf einer Webseite live an. Bis ein Pico 2 W zur Verfügung
+steht, übernimmt der Linux-Node in `pi-node/` die Messung auf dem Pi 4 B selbst.
 
 ## Umgebung
 
 | Ort | Rolle |
 |-----|-------|
 | Bazzite (Host) | Entwicklung, Pico per USB (`mpremote`) |
-| Raspberry Pi 4 B, `192.168.178.43`, User `pi` | Server-Betrieb (venv + systemd, Port 8099) |
+| Raspberry Pi 4 B, `192.168.178.43`, User `pi` | Server-Betrieb (venv + systemd, Port 8099) **und** Node A (`rssi-node`) |
 
-Der gemeldete Pico am USB-Port ist ein **Pico 2 ohne WLAN**, geflasht mit CircuitPython.
-Die Firmware in `firmware/` ist für **Pico 2 W + MicroPython** geschrieben und wird
-erst nutzbar, wenn ein echtes Pico 2 W-Board geflasht wird.
+Der gemeldete Pico am USB-Port ist ein **Pico 2 ohne WLAN**, geflasht mit
+CircuitPython 9.2.0-beta; `network`, `wifi` und `bluetooth` fehlen dort nach
+Auslesen bestätigt. Die Firmware in `firmware/` ist für **Pico 2 W + MicroPython**
+geschrieben und wird erst nutzbar, wenn ein echtes Pico 2 W-Board geflasht wird.
+Bis dahin misst `pi-node/` auf dem Pi 4 B, der WLAN (`wlan0`) und Bluetooth
+(`hci0`) an Bord hat.
 
 ## Harte Regeln
 
@@ -26,6 +30,9 @@ erst nutzbar, wenn ein echtes Pico 2 W-Board geflasht wird.
 - Firmware: MicroPython, Konfiguration ausschließlich in `firmware/common/config.py`.
   `config.py` ist in `.gitignore`, `config.example.py` wird eingecheckt. Keine
   WLAN-Passwörter ins Git.
+- Linux-Node (`pi-node/`): nur Standardbibliothek, `bleak` als einzige Abhängigkeit.
+  Konfiguration über Argumente und `Environment=` in `pi-node/rssi-node.service`,
+  keine eigene Config-Datei und keine Zugangsdaten (der Pi hängt am Ethernet).
 - Kommentare, Docstrings und Doku auf Deutsch.
 - Kein Docker auf dem Pi (1,8 GB RAM, andere Dienste laufen) — Deployment per venv +
   systemd, siehe `deploy/`.
@@ -48,17 +55,27 @@ cd server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | Befehl | Prüft |
 |--------|-------|
 | `python3 server/tests/test_positioning.py` | Rechnung, ohne Server und ohne pytest |
+| `python3 pi-node/test_node.py` | Parser des Linux-Nodes, ohne Funk und ohne pytest |
 | `server/.venv/bin/python server/tests/smoke.py <URL>` | Ingest, WebSocket, Positionierung |
 | `server/.venv/bin/python tools/check_page.py <URL>` | Weboberfläche in headless Chrome |
 
 Nach jeder Änderung an `server/positioning.py` mindestens den ersten Befehl,
-nach Änderungen an `server/app.py` oder `static/index.html` alle drei.
+nach Änderungen an `pi-node/node.py` den zweiten, nach Änderungen an
+`server/app.py` oder `static/index.html` alle vier.
 
 ## Deployment
 
 ```bash
 bash deploy/deploy.sh          # rsync + venv + systemd restart auf dem Pi
 bash deploy/deploy.sh logs     # systemctl logs folgen
+```
+
+Der Node auf dem Pi wird nach dem Deploy einmalig installiert und läuft danach
+automatisch weiter:
+
+```bash
+ssh pi@192.168.178.43 'bash /home/pi/rssi-locator/pi-node/install.sh'
+ssh pi@192.168.178.43 'sudo journalctl -u rssi-node -f'
 ```
 
 ## Datenformat Node → Server
@@ -73,7 +90,7 @@ Der Server stempelt die Zeit selbst — Pico-Uhren sind unzuverlässig.
 
 ## Qualität
 
-- Vor jedem Abschluss: `pytest server/tests` und ein manueller Test
+- Vor jedem Abschluss: `pytest server/tests pi-node` und ein manueller Test
   (`/healthz`, Simulator, WebSocket-Push).
 - Keine Kommentare, die nur Code erklären. Kommentare nur, wenn *warum* nicht offensichtlich ist.
 - Skalare Einheiten: alle Längen in **Metern**, RSSI in **dBm**, Zeiten in **Sekunden (Unix)**.

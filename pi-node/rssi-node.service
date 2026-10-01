@@ -1,0 +1,37 @@
+[Unit]
+Description=RSSI-Locator Node (WLAN- und BLE-Messung auf dem Raspberry Pi)
+Documentation=file:///home/pi/rssi-locator/AGENTS.md
+After=network-online.target bluetooth.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/rssi-locator/pi-node
+Environment=PYTHONUNBUFFERED=1
+Environment=NODE_ID=A
+Environment=IFACE=wlan0
+Environment=NODE_URL=http://192.168.178.43:8099/ingest
+ExecStart=/home/pi/rssi-locator/pi-node/.venv/bin/python /home/pi/rssi-locator/pi-node/node.py --node ${NODE_ID} --iface ${IFACE} --url ${NODE_URL}
+Restart=always
+RestartSec=5
+
+# `iw` braucht CAP_NET_ADMIN, um wlan0 hochzufahren und zu scannen. bleak
+# kommt ohne Root aus, deshalb wird nur diese eine Faehigkeit vergeben.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pi/rssi-locator
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target
