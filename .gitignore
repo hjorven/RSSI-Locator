@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Konfiguration mit WLAN-Passwörtern niemals einchecken
+firmware/common/config.py
+config.py
+
+# MicroPython-Ports
+firmware/node/lib/
+
+# Werkzeuge
+.pytest_cache/

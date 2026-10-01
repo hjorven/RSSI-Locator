@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSSI-Locator</title>
+<style>
+  :root {
+    --bg: #101418; --panel: #171d24; --line: #26313d; --text: #e6edf3;
+    --muted: #8b9aa9; --accent: #4da3ff; --ok: #3fb950; --warn: #d29922;
+    --bad: #f85149; --ble: #58a6ff; --wifi: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
+    display: grid; grid-template-columns: 1fr 340px; height: 100vh;
+  }
+  #map { position: relative; }
+  canvas { width: 100%; height: 100%; display: block; }
+  aside {
+    background: var(--panel); border-left: 1px solid var(--line);
+    overflow-y: auto; padding: 14px;
+  }
+  h1 { font-size: 16px; margin: 0 0 10px; letter-spacing: .04em; }
+  h2 { font-size: 12px; text-transform: uppercase; color: var(--muted);
+       margin: 18px 0 8px; letter-spacing: .08em; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .badge { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .dev { cursor: default; }
+  .tag { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 9px 0 3px; }
+  input[type=number] {
+    width: 100%; padding: 5px 7px; background: #0d1117; color: var(--text);
+    border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 13px;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  button {
+    margin-top: 12px; width: 100%; padding: 7px; background: #21313f; color: var(--text);
+    border: 1px solid var(--line); border-radius: 5px; cursor: pointer; font: inherit;
+  }
+  button:hover { background: #2b3f51; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="map"><canvas id="canvas"></canvas></div>
+<aside>
+  <h1>RSSI-Locator</h1>
+  <div class="status">
+    <span class="badge">WS <span class="dot" id="wsdot" style="background:var(--bad)"></span> <span id="wstxt">getrennt</span></span>
+    <span class="badge" id="nodecount">Nodes 0/0</span>
+    <span class="badge" id="uptime">–</span>
+  </div>
+
+  <h2>Geräte</h2>
+  <table>
+    <thead><tr><th>Gerät</th><th class="num">A</th><th class="num">B</th><th class="num">x / y</th></tr></thead>
+    <tbody id="devbody"><tr><td colspan="4" style="color:var(--muted)">keine Daten</td></tr></tbody>
+  </table>
+
+  <h2>Einstellungen</h2>
+  <div class="grid2">
+    <div>
+      <label>Abstand D (m)</label>
+      <input type="number" id="node_distance" step="0.1" min="0.1">
+      <label>RSSI 1 m BLE (dBm)</label>
+      <input type="number" id="rssi_1m_ble" step="1">
+      <label>RSSI 1 m WLAN (dBm)</label>
+      <input type="number" id="rssi_1m_wifi" step="1">
+    </div>
+    <div>
+      <label>n BLE</label>
+      <input type="number" id="path_loss_ble" step="0.1">
+      <label>n WLAN</label>
+      <input type="number" id="path_loss_wifi" step="0.1">
+      <label>RSSI-Fenster</label>
+      <input type="number" id="rssi_window" step="1" min="1">
+      <label>Positionsfilter</label>
+      <input type="number" id="position_alpha" step="0.05" min="0.01" max="1">
+    </div>
+  </div>
+  <button id="apply">Übernehmen</button>
+  <button id="reset">Filter zurücksetzen</button>
+  <p class="hint">
+    Ellipsen zeigen die 95-%-Unsicherheit. Gestrichelt: mit zwei Nodes ist die
+    Position nur gespiegelt bestimmt. Gelber Ring: die Messungen widersprechen
+    sich, der Punkt liegt dann auf der Verbindungslinie der Nodes. Taste "f"
+    passt den Ausschnitt an.
+  </p>
+</aside>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const canvas = $("canvas");
+const ctx = canvas.getContext("2d");
+
+// Weltkoordinaten (Meter) -> Bildschirm. A liegt immer links unten.
+const view = { minX: -1.5, maxX: 5.5, minY: -1.5, maxY: 4.5 };
+let state = null;
+window.state = null;  // für automatisierte Prüfungen (tools/check_page.py)
+let hover = null;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+new ResizeObserver(resize).observe(canvas);
+resize();
+
+function fitToData() {
+  if (!state) return;
+  const pts = [];
+  state.nodes.forEach(n => pts.push([n.x, n.y]));
+  state.devices.filter(d => d.ok).forEach(d => pts.push([d.x, d.y]));
+  if (pts.length < 2) return;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of pts) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  const margin = 1.2;
+  view.minX = minX - margin; view.maxX = maxX + margin;
+  view.minY = minY - margin; view.maxY = maxY + margin;
+}
+
+function toPx(x, y) {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  // Seitenverhältnis wahren: gleicher Meter-Maßstab in x und y.
+  const mx = view.maxX - view.minX, my = view.maxY - view.minY;
+  const scale = Math.min(w / mx, h / my);
+  const ox = (w - mx * scale) / 2, oy = (h - my * scale) / 2;
+  return [ox + (x - view.minX) * scale, h - oy - (y - view.minY) * scale];
+}
+
+function draw() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.fillStyle = "#101418";
+  ctx.fillRect(0, 0, w, h);
+  if (!state) { drawEmpty(); return; }
+
+  drawGrid(w, h);
+  state.devices.filter(d => d.ok).forEach(drawDevice);
+  state.nodes.forEach(drawNode);
+  drawScale(w, h);
+}
+
+function drawEmpty() {
+  ctx.fillStyle = "#8b9aa9";
+  ctx.font = "15px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("Warte auf Daten der Nodes …", canvas.clientWidth / 2, canvas.clientHeight / 2);
+}
+
+function drawGrid(w, h) {
+  const step = gridStep();
+  ctx.strokeStyle = "#1d242c";
+  ctx.fillStyle = "#5c6b7a";
+  ctx.font = "11px system-ui";
+  ctx.textAlign = "left";
+  for (let x = Math.ceil(view.minX / step) * step; x <= view.maxX; x += step) {
+    const [px] = toPx(x, 0);
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+    ctx.fillText(x.toFixed(step < 1 ? 1 : 0) + " m", px + 3, h - 5);
+  }
+  for (let y = Math.ceil(view.minY / step) * step; y <= view.maxY; y += step) {
+    const [, py] = toPx(0, y);
+    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
+    ctx.fillText(y.toFixed(step < 1 ? 1 : 0) + " m", 4, py - 3);
+  }
+}
+
+function gridStep() {
+  const mx = view.maxX - view.minX;
+  const candidates = [0.5, 1, 2, 5, 10, 20];
+  for (const c of candidates) if (mx / c <= 12) return c;
+  return 50;
+}
+
+function drawDevice(d) {
+  const [px, py] = toPx(d.x, d.y);
+  const [ax] = toPx(d.x + d.rx, d.y);
+  const [, ay] = toPx(d.x, d.y + d.ry);
+  const rx = Math.max(4, Math.abs(ax - px));
+  const ry = Math.max(4, Math.abs(ay - py));
+  const color = d.kind === "ble" ? "#58a6ff" : "#bc8cff";
+
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.35;
+  // Gestrichelt = Position nur gespiegelt bestimmt (zwei Nodes).
+  ctx.setLineDash(d.mirrored ? [5, 3] : []);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([]);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(0, 0, 5, 0, Math.PI * 2);
+  ctx.fill();
+  if (!d.consistent) {
+    // Messungen widersprechen sich: Punkt liegt nur als Projektion auf der Linie.
+    ctx.strokeStyle = "#d29922";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+  ctx.fillStyle = "#e6edf3";
+  ctx.font = "12px system-ui";
+  ctx.textAlign = "left";
+  ctx.fillText(d.label, 9, 4);
+  ctx.restore();
+}
+
+function drawNode(n) {
+  const [px, py] = toPx(n.x, n.y);
+  ctx.save();
+  ctx.fillStyle = n.online ? "#3fb950" : "#6e7b8b";
+  ctx.strokeStyle = "#0b0e12";
+  ctx.beginPath();
+  ctx.moveTo(px, py - 8); ctx.lineTo(px + 7, py); ctx.lineTo(px, py + 8); ctx.lineTo(px - 7, py);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#e6edf3";
+  ctx.font = "bold 12px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("Node " + n.id, px, py - 13);
+  ctx.restore();
+}
+
+function drawScale(w, h) {
+  const step = gridStep();
+  const [x0] = toPx(0, 0), [x1] = toPx(step, 0);
+  const len = x1 - x0;
+  ctx.strokeStyle = "#8b9aa9"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w - len - 20, 22); ctx.lineTo(w - 20, 22);
+  ctx.moveTo(w - len - 20, 18); ctx.lineTo(w - len - 20, 26);
+  ctx.moveTo(w - 20, 18); ctx.lineTo(w - 20, 26);
+  ctx.stroke();
+  ctx.fillStyle = "#8b9aa9"; ctx.font = "12px system-ui"; ctx.textAlign = "center";
+  ctx.fillText(step + " m", w - 20 - len / 2, 40);
+  ctx.lineWidth = 1;
+}
+
+function renderTable() {
+  const body = $("devbody");
+  const devs = state ? state.devices : [];
+  if (!devs.length) {
+    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">keine Daten</td></tr>';
+    return;
+  }
+  const rows = devs.map(d => {
+    const byNode = {};
+    d.sources.forEach(s => { byNode[s.node] = s; });
+    const ids = state.nodes.map(n => n.id);
+    const cell = id => byNode[id]
+      ? `<span title="${byNode[id].dist} m">${Math.round(byNode[id].rssi)}</span>`
+      : '<span style="color:#4a5560">–</span>';
+    let pos = d.ok
+      ? `${d.x.toFixed(1)} / ${d.y.toFixed(1)}`
+      : '<span style="color:var(--muted)">–</span>';
+    if (d.ok && !d.consistent) pos += ' <span title="Messung widersprüchlich">!</span>';
+    const color = d.kind === "ble" ? "#58a6ff" : "#bc8cff";
+    const age = d.age > 5 ? ` <span style="color:var(--warn)">(${Math.round(d.age)}s)</span>` : "";
+    return `<tr class="dev"><td><span class="tag" style="background:${color}"></span>${d.label}${age}</td>` +
+      ids.map(id => `<td class="num">${cell(id)}</td>`).join("") +
+      `<td class="num">${pos}</td></tr>`;
+  });
+  body.innerHTML = rows.join("");
+}
+
+function renderStatus() {
+  const online = state ? state.nodes.filter(n => n.online).length : 0;
+  $("nodecount").textContent = `Nodes ${online}/${state ? state.nodes.length : 0}`;
+  $("uptime").textContent = state ? `seit ${Math.round(state.uptime / 60)} min` : "–";
+}
+
+let settingsDirty = false;
+function fillSettings(s) {
+  if (!s || settingsDirty) return;
+  ["node_distance", "rssi_1m_ble", "rssi_1m_wifi", "path_loss_ble", "path_loss_wifi",
+   "rssi_window", "position_alpha"].forEach(k => { if (s[k] !== undefined) $(k).value = s[k]; });
+}
+
+async function post(url, body) {
+  await fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {})
+  });
+}
+
+$("apply").addEventListener("click", async () => {
+  const values = {};
+  ["node_distance", "rssi_1m_ble", "rssi_1m_wifi", "path_loss_ble", "path_loss_wifi",
+   "rssi_window", "position_alpha"].forEach(k => {
+    const v = parseFloat($(k).value);
+    if (!isNaN(v)) values[k] = v;
+  });
+  await post("/api/settings", values);
+  settingsDirty = false;
+});
+
+$("reset").addEventListener("click", async () => {
+  await post("/api/reset", {});
+  settingsDirty = false;
+});
+
+["node_distance", "rssi_1m_ble", "rssi_1m_wifi", "path_loss_ble", "path_loss_wifi",
+ "rssi_window", "position_alpha"].forEach(k => {
+  $(k).addEventListener("input", () => { settingsDirty = true; });
+});
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => {
+    $("wsdot").style.background = "var(--ok)";
+    $("wstxt").textContent = "verbunden";
+  };
+  ws.onclose = () => {
+    $("wsdot").style.background = "var(--bad)";
+    $("wstxt").textContent = "getrennt";
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = (ev) => {
+    state = JSON.parse(ev.data);
+    window.state = state;
+    fillSettings(state.settings);
+    fitToData();
+    renderStatus();
+    renderTable();
+    draw();
+  };
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "f") { fitToData(); draw(); }
+});
+
+connect();
+setInterval(draw, 1000);  // Canvas-Größe kann sich ohne Datenänderung ändern
+</script>
+</body>
+</html>

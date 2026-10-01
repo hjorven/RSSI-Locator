@@ -1,0 +1,34 @@
+[Unit]
+Description=RSSI-Locator Server (FastAPI, Positionsberechnung und Weboberflaeche)
+Documentation=file:///home/pi/rssi-locator/AGENTS.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/rssi-locator/server
+Environment=PUSH_HZ=2
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/rssi-locator/server/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8099 --no-access-log
+Restart=always
+RestartSec=3
+
+# Der Server braucht nur das eigene Verzeichnis und das Netzwerk.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pi/rssi-locator
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=200M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
