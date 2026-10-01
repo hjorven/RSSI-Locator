@@ -145,6 +145,10 @@ def addr_str(addr):
 
 def scan_ble():
     """Ein BLE-Scanfenster. Liefert Liste von (mac, rssi, name, node_link)."""
+    # `scan_done` wird im IRQ gesetzt. Ohne `global` laeuft die Warteschleife in
+    # ein lokales False und wartet jedes Mal die vollen 5 s ab, auch wenn der
+    # Treiber den Scan nach 3 s sauber beendet hat.
+    global scan_done
     if ble is None:
         return []
     ble_results.clear()

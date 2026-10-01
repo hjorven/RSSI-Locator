@@ -159,6 +159,12 @@ PY
   einen Fehler.
 - `wlan.scan()` liefert **Tupel**, keine Dictionaries:
   `(ssid, bssid, security, rssi, ?, kanal)`, also steht der RSSI an Index 3.
+- Puffer, die im IRQ **zugewiesen** werden, brauchen ein `global` in der
+  aufrufenden Funktion, sonst arbeitet jede Funktion auf ihrer eigenen Kopie. Zwei
+  Varianten standen im ersten Stand drin: `ble_buffer`/`wifi_buffer` blieben
+  dadurch leer, der Node sendete also erfolgreich ganz ohne Messwerte, und
+  `scan_done` wurde nie `True`, wodurch jeder Scan die vollen 5 s statt der
+  3 s wartete. Seit dem Fix dauert ein Zyklus 2 s statt 7 s.
 - Direkt nach dem DHCP-Vergabe läuft der erste TCP-Connect gelegentlich in einen
   Timeout. `post_json` versucht es zweimal.
 - Ein Firmware-Absturz beendet `main.py` lautlos. `main()` fängt deshalb alles ab
