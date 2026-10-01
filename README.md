@@ -65,14 +65,17 @@ Speicher.
 
 ## Firmware auf den Pico
 
-Siehe [docs/hardware.md](docs/hardware.md). Kurzfassung:
+Siehe [docs/hardware.md](docs/hardware.md) für das Flashen von MicroPython.
+
+Danach genügt ein Befehl — er prüft zuerst, ob das Board überhaupt WLAN kann:
 
 ```bash
-cp firmware/common/config.example.py firmware/common/config.py   # WLAN + Server eintragen
-mpremote connect <PORT> fs cp firmware/common/config.py :config.py
-mpremote connect <PORT> fs cp firmware/node/main.py :main.py
-mpremote connect <PORT> reset
+bash tools/flash_node.sh            # Board suchen, config.py + main.py kopieren, Startlog
+bash tools/flash_node.sh /dev/ttyACM0
 ```
+
+Für Node B `firmware/common/config.py` mit `NODE_ID = "B"` und
+`BEACON_NAME = "RSSI-Node-B"` anpassen, dann das Skript erneut ausführen.
 
 ## Kalibrierung
 
