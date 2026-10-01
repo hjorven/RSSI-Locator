@@ -14,19 +14,20 @@
 - Firmware für Pico 2 W (WLAN, abwechselnder BLE-/WLAN-Scan, HTTP-POST per
   Socket, BLE-Beacon zur Node-Erkennung)
 - Node-Client für Linux (`pi-node/`): WLAN-Vollscan über `iw` mit echten dBm,
-  BLE-Scan über `bleak`, läuft als Node A auf dem Pi 4 B und liefert 39 Geräte
-  in die Weboberfläche
+  BLE-Scan über `bleak`, läuft als Node B auf dem Pi 4 B
+- Pico 2 W mit MicroPython 1.29.0 geflasht und als Node A in Betrieb: BLE- und
+  WLAN-Scan, HTTP-POST, Beacon aktiv. Drei Fehler der ersten Firmware-Version
+  sind gefunden und behoben (`bluetooth.ble` existiert nicht mehr, `wlan.scan()`
+  nimmt kein Argument und liefert Tupel, Start-Timeout beim ersten Senden)
 
 ## Offen
 
 ### Hardware
 
-- Kein Pico 2 W angeschlossen. Die Firmware ist ungetestet; die ersten beiden
-  Testläufe (WLAN, dann BLE, dann zusammen) stehen aus.
-- Der angeschlossene Pico 2 (ohne W, CircuitPython 9.2.0-beta) kann weder
-  scannen noch senden — ausgelesen und bestätigt, es fehlen `network`, `wifi`
-  und `bluetooth`. Ein Pico 2 W ist eine andere Platine, MicroPython hilft dort
-  nicht.
+- Ein zweiter Pico 2 W fehlt noch. Node B misst derzeit der Pi 4 B.
+- Die serielle Ausgabe des Nodes ist die einzige Anzeige. Für den Dauerbetrieb
+  wäre eine Logdatei auf dem Board oder ein Heartbeat-Feld in der Weboberfläche
+  praktisch.
 
 ### Nodeabstand automatisch messen
 

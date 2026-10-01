@@ -65,6 +65,21 @@ messen lassen, dann mittleren Fehler und Streuung notieren. Erwartbar sind
 1 bis 3 m. Wenn der Fehler stark richtungsabhängig ist (immer zu weit links),
 stimmt der Umgebungsfaktor nicht oder die Antennen sitzen unterschiedlich.
 
+## Einstellungen gehen bei einem Neustart verloren
+
+Der Server hält die Einstellungen bewusst nur im Arbeitsspeicher (keine
+Datenbank). Nach `systemctl restart rssi-locator` gelten wieder die Vorgaben.
+Deshalb nach jedem Serverstart:
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"node_offline_after": 12}' \
+  http://192.168.178.43:8099/api/settings
+```
+
+`node_offline_after` 12 s statt 5 s: ein Pico 2 W braucht bis zu 5 s für einen
+BLE-Scan und nochmal bis zu 4 s für einen WLAN-Vollscan. Mit den Vorgabe-Werten
+flackert der Node während des WLAN-Scans im Browser als "offline".
+
 ## Grenzen des Modells
 
 Die angezeigte Unsicherheitsellipse kommt aus der **RSSI-Streuung** der letzten

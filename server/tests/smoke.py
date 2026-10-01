@@ -4,6 +4,10 @@ Startet den Simulator für wenige Sekunden und prüft, ob über /api/state
 Geräte mit Positionen auftauchen.
 
     python3 server/tests/smoke.py http://127.0.0.1:8099
+
+Der Simulator läuft mit eigenen Node-IDs (`TEST-A`, `TEST-B`), damit er die
+Messreihen der echten Nodes nicht verfälscht. Seine Geräte verschwinden nach
+`drop_after` (2 min) von selbst.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ import urllib.request
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[2] / "tools" / "simulate_nodes.py"
+TEST_NODES = ("TEST-A", "TEST-B")
 
 
 def get_json(url: str):
@@ -44,7 +49,16 @@ def main() -> int:
     base = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8099").rstrip("/")
     print("healthz:", get_json(base + "/healthz"))
     proc = subprocess.Popen(
-        [sys.executable, str(TOOLS), "--url", base + "/ingest", "--speed", "3.0"]
+        [
+            sys.executable,
+            str(TOOLS),
+            "--url",
+            base + "/ingest",
+            "--speed",
+            "3.0",
+            "--nodes",
+            ",".join(TEST_NODES),
+        ]
     )
     try:
         asyncio.run(check_websocket(base))
@@ -52,9 +66,17 @@ def main() -> int:
         while time.time() < deadline:
             time.sleep(1.0)
             state = get_json(base + "/api/state")
-            positioned = [d for d in state["devices"] if d["ok"]]
+            # Nur die Test-Geräte zählen: die echten Nodes liefern laufend Daten,
+            # sonst wäre der Test schon gruen, bevor der Simulator sendet.
+            test_geraete = [
+                d
+                for d in state["devices"]
+                if {s["node"] for s in d["sources"]} >= set(TEST_NODES)
+            ]
+            positioned = [d for d in test_geraete if d["ok"]]
             print(
                 f"nodes={len(state['nodes'])} devices={len(state['devices'])} "
+                f"testgeraete={len(test_geraete)} "
                 f"positioniert={len(positioned)} "
                 f"konsistent={sum(1 for d in positioned if d['consistent'])}"
             )
@@ -64,7 +86,7 @@ def main() -> int:
                     print(f"  {d['label']}: ({d['x']}, {d['y']}) m  ±{d['rx']}/{d['ry']} m  {quellen}")
                 print("OK: Geräte werden positioniert.")
                 return 0
-        print("FEHLER: keine positionierten Geräte gesehen")
+        print("FEHLER: keine positionierten Testgeräte gesehen")
         return 1
     finally:
         proc.terminate()

@@ -2,28 +2,41 @@
 
 ## Aktueller Stand
 
-Angeschlossen ist ein **Pico 2 ohne WLAN** (`/dev/ttyACM0`, USB-ID `2e8a:000b`),
-geflasht mit **CircuitPython 9.2.0-beta**. Ausgelesen und bestätigt:
+Angeschlossen ist ein **Pico 2 W** mit **MicroPython 1.29.0** (`/dev/ttyACM0`),
+der als Node A läuft. Ausgelesen und bestätigt:
+
+```
+machine : Raspberry Pi Pico 2 W with RP2350
+version : v1.29.0 on 2026-08-24
+network, bluetooth, ssl: vorhanden
+```
+
+### Wichtig: `os.uname().machine` nennt die Firmware, nicht die Platine
+
+Auf dem Board lief vorher **CircuitPython 9.2.0-beta**, und zwar die Build
+`RASPBERRYPI_PICO2` — die Variante **ohne** Funk. Die meldete sich als
 
 ```
 Machine: Raspberry Pi Pico 2 with rp2350a
 network, wifi, bluetooth, socketpool, ssl: fehlen alle
 ```
 
-Ein Pico 2 W ist nicht nur eine andere Firmware, sondern eine andere Platine mit
-Funkmodul (RM2/CYW43). Auch mit MicroPython bekäme dieses Board kein WLAN und
-kein BLE, die Firmware aus `firmware/` läuft darauf also nie.
+was nach einem Pico 2 ohne W aussieht, aber keiner war. Der Board-String und die
+verfügbaren Module stammen aus der **kompilierten Firmware**, nicht aus dem
+Silberdruck. Vor dem Schluss "das ist kein W" gehört deshalb `RPI_PICO2_W`
+geflasht und `network` erneut geprüft.
 
-Erkennen, was angeschlossen ist:
+Anhaltspunkte, die unabhängig von der Firmware stimmen:
 
-```bash
-mpremote connect list
-mpremote exec "import os; print(os.uname().machine)"
-mpremote exec "import network"      # nur beim Pico 2 W ein Erfolg
-```
+| Merkmal | Pico 2 | Pico 2 W |
+|---------|--------|----------|
+| USB-ID in CircuitPython | `2e8a:000b` | `2e8a:000a` |
+| Funkmodul auf der Platine | keins | RM2/CYW43, Antenne auf der Rückseite |
+| `import network` | nein | ja |
+| Aufschrift | `PICO 2` | `PICO 2 W` |
 
-`tools/flash_node.sh` prüft `network` und `bluetooth` und bricht mit dieser
-Meldung ab, statt nutzlose Dateien auf ein Board ohne Funk zu kopieren:
+`tools/flash_node.sh` prüft `network` und `bluetooth` und bricht ab, statt
+Dateien auf ein Board ohne Funk zu kopieren:
 
 ```
 FEHLER: Das Board hat kein network-Modul.
@@ -31,9 +44,10 @@ FEHLER: Das Board hat kein network-Modul.
 
 ## Zwischenlösung: der Pi 4 B als Node
 
-Der Pi 4 B hat WLAN (`wlan0`) und Bluetooth (`hci0`) an Bord und kann dieselben
-Messungen machen wie der Pico 2 W. Der Node-Client liegt in `pi-node/` und
-spricht dasselbe `/ingest`-Format wie die Firmware.
+Der Pi 4 B hat WLAN (`wlan0`) und Bluetooth (`hci0`) an Bord und macht dieselben
+Messungen wie der Pico 2 W. Der Node-Client liegt in `pi-node/` und spricht
+dasselbe `/ingest`-Format wie die Firmware. Er ist als **Node B** eingetragen,
+weil der Pico die mobilen Node A mit den WLAN-Zugangsdaten ist.
 
 ```bash
 bash deploy/deploy.sh                 # Code auf den Pi kopieren
@@ -45,26 +59,41 @@ braucht `CAP_NET_ADMIN` für `iw` (Schnittstelle hochfahren und scannen); der
 BLE-Scan über `bleak` läuft ohne Root. Der Pi hängt am Ethernet und funkt nur
 zum Messen — deshalb ist kein WLAN-Passwort nötig, im Gegensatz zum Pico.
 
-Konfiguration per Drop-in:
+Die Node-Kennung steckt in einem Drop-in, damit die Unit-Datei unverändert
+bleibt:
 
 ```bash
-sudo systemctl edit rssi-node         # NODE_ID, IFACE, NODE_URL
-bash deploy/deploy.sh && ssh pi@192.168.178.43 'sudo systemctl restart rssi-node'
+printf "[Service]\nEnvironment=NODE_ID=B\n" | \
+  sudo tee /etc/systemd/system/rssi-node.service.d/node-id.conf
+sudo systemctl daemon-reload && sudo systemctl restart rssi-node
 ```
 
-| Node | `NODE_ID` | Ort |
-|------|-----------|-----|
-| A    | `A` (Vorgabe) | Pi 4 B, `rssi-node` |
-| B    | `B` | später der Pico 2 W |
+| Node | Kennung | Ort |
+|------|---------|-----|
+| A | `A` | Pico 2 W, `firmware/common/config.py` |
+| B | `B` | Pi 4 B, Drop-in am Dienst `rssi-node` |
 
 ## MicroPython auf den Pico 2 W flashen
 
-1. **BOOTSEL**: Pico 2 W hat keinen BOOTSEL-Schalter mehr, sondern startet mit
-   gedrücktem BOOTSEL USB in den Mass-Storage-Modus.
-2. Firmware herunterladen (RP2350, USB):
-   <https://micropython.org/download> → `RPI_PICO2_W` → `.uf2`
-3. Die `.uf2` per Drag-and-drop auf das neu sichtbare Laufwerk `RPI-RP2` legen,
-   Gerät trennen und wieder anstecken.
+1. **BOOTSEL-Knopf gedrückt halten** und das USB-Kabel einstecken. Der Pico 2 W
+   hat einen Knopf, kein Lötpad. Nach dem Einstecken erscheint das Laufwerk mit
+   der Bezeichnung `RP2350` (128 MB, `2e8a:000f`).
+2. Firmware herunterladen: <https://micropython.org/download/RPI_PICO2_W>. Der
+   Dateiname enthält das Datum, im Zweifel von der Seite ablesen und nicht
+   zusammenbauen:
+   ```
+   RPI_PICO2_W-20260824-v1.29.0.uf2
+   https://micropython.org/resources/firmware/RPI_PICO2_W-20260824-v1.29.0.uf2
+   ```
+3. Datei auf das Laufwerk kopieren, Gerät trennen und wieder anstecken. Auf einem
+   System ohne Dateimanager geht das auch so:
+   ```bash
+   sudo mkdir -p /tmp/uf2 && sudo mount /dev/sdX1 /tmp/uf2
+   sudo cp RPI_PICO2_W-*.uf2 /tmp/uf2/ && sudo sync
+   sleep 3 && sudo umount /tmp/uf2       # danach ist das Verzeichnis leer
+   ```
+   Der leere Mount am Ende ist kein Fehler: der Bootloader hat die Partition
+   zurückgesetzt und das Board neu gestartet.
 4. Prüfen:
    ```bash
    mpremote connect list          # muss "Raspberry Pi Pico 2 W" zeigen
@@ -94,21 +123,46 @@ werden. Für zwei Nodes wird die Datei zweimal angepasst, jeweils mit anderem
 ## Auf den Node kopieren
 
 ```bash
-PORT=$(mpremote connect list | grep -m1 "Pico 2 W.*:/dev/ttyACM" | cut -d' ' -f1)
-mpremote connect "$PORT" fs cp firmware/common/config.py :config.py
-mpremote connect "$PORT" fs cp firmware/node/main.py :main.py
-mpremote connect "$PORT" fs ls
-mpremote connect "$PORT" reset
+bash tools/flash_node.sh              # sucht das Board, prüft Funk, kopiert, zeigt das Log
+bash tools/flash_node.sh /dev/ttyACM0 # Port explizit
 ```
 
-Die serielle Ausgabe zeigt den Fortschritt:
+Die serielle Ausgabe zeigt den Fortschritt. Ohne Bildschirm ist die einzige
+Anzeige der serielle Log, deshalb gibt der Node alle 20 Zyklen eine Zeile aus:
 
 ```
-[A] Firmware 1.0.0, MicroPython v1.24.1 ...
-[A] WLAN verbunden: WLAN-50, IP 192.168.178.51
+[A] Firmware 1.0.0, MicroPython 3.4.0; MicroPython v1.29.0 on 2026-08-24
+[A] WLAN verbunden: Chaotic, IP 192.168.178.161
 [A] Beacon aktiv: RSSI-Node-A (A)
-[A] Sende 2 Nodes an ...
+[A] Zyklus 20: 22 BLE, 3 WLAN, gesendet ok
 ```
+
+Das Log lässt sich auch ohne Terminal mitlesen, `script` leiht dem Aufruf ein
+pty:
+
+```bash
+python3 - <<'PY'
+import serial, time
+s = serial.Serial('/dev/ttyACM0', 115200, timeout=0.5)
+s.write(b'\x04')                      # Soft-Restart, startet main.py neu
+s.reset_input_buffer()
+print(s.read(4000).decode('utf-8', 'replace'))
+s.close()
+PY
+```
+
+### Fallstricke, die beim ersten Lauf Zeit gekostet haben
+
+- `bluetooth.ble` gibt es nicht mehr. MicroPython liefert die Instanz aus
+  `BLE()`, man muss sie selbst festhalten.
+- `wlan.scan()` nimmt **kein** Argument; `wlan.scan(None)` wirft auf dem rp2-Port
+  einen Fehler.
+- `wlan.scan()` liefert **Tupel**, keine Dictionaries:
+  `(ssid, bssid, security, rssi, ?, kanal)`, also steht der RSSI an Index 3.
+- Direkt nach dem DHCP-Vergabe läuft der erste TCP-Connect gelegentlich in einen
+  Timeout. `post_json` versucht es zweimal.
+- Ein Firmware-Absturz beendet `main.py` lautlos. `main()` fängt deshalb alles ab
+  und startet nach 10 s neu.
 
 ## Nodeabstand D automatisch messen (optional)
 

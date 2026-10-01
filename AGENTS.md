@@ -2,22 +2,24 @@
 
 Projekt: Zwei Raspberry Pi Pico 2 W messen RSSI von BLE-Geräten und Access Points und
 schicken die Messwerte per HTTP an einen Raspberry Pi 4 B. Der Server schätzt die
-Positionen und zeigt sie auf einer Webseite live an. Bis ein Pico 2 W zur Verfügung
-steht, übernimmt der Linux-Node in `pi-node/` die Messung auf dem Pi 4 B selbst.
+Positionen und zeigt sie auf einer Webseite live an. Aktuell läuft Node A auf einem
+Pico 2 W, Node B auf dem Pi 4 B selbst (`pi-node/`).
 
 ## Umgebung
 
 | Ort | Rolle |
 |-----|-------|
-| Bazzite (Host) | Entwicklung, Pico per USB (`mpremote`) |
-| Raspberry Pi 4 B, `192.168.178.43`, User `pi` | Server-Betrieb (venv + systemd, Port 8099) **und** Node A (`rssi-node`) |
+| Bazzite (Host) | Entwicklung, Pico 2 W per USB (`mpremote`) |
+| Raspberry Pi 4 B, `192.168.178.43`, User `pi` | Server-Betrieb (venv + systemd, Port 8099) **und** Node B (`rssi-node`) |
 
-Der gemeldete Pico am USB-Port ist ein **Pico 2 ohne WLAN**, geflasht mit
-CircuitPython 9.2.0-beta; `network`, `wifi` und `bluetooth` fehlen dort nach
-Auslesen bestätigt. Die Firmware in `firmware/` ist für **Pico 2 W + MicroPython**
-geschrieben und wird erst nutzbar, wenn ein echtes Pico 2 W-Board geflasht wird.
-Bis dahin misst `pi-node/` auf dem Pi 4 B, der WLAN (`wlan0`) und Bluetooth
-(`hci0`) an Bord hat.
+Node A ist der **Pico 2 W** mit MicroPython 1.29.0 (`firmware/`), Node B der
+Linux-Node `pi-node/` auf dem Pi 4 B.
+
+Vorsicht bei der Hardware-Erkennung: `os.uname().machine` nennt die
+kompilierte Firmware, nicht die Platine. Auf diesem Board lief kurzzeitig die
+CircuitPython-Build `RASPBERRYPI_PICO2` (ohne Funk) auf einem Pico 2 W und meldete
+sich dadurch als "Pico 2" ganz ohne `network`. Verbindlich ist nur, was nach dem
+Flashen von `RPI_PICO2_W` da ist, siehe `docs/hardware.md`.
 
 ## Harte Regeln
 

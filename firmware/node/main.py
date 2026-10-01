@@ -24,9 +24,9 @@ import network
 from micropython import const
 
 try:
-    import bluetooth
+    from bluetooth import BLE
 except ImportError:  # Board ohne Funk (z. B. Pico 2 ohne "W")
-    bluetooth = None
+    BLE = None
 
 from config import (
     BEACON_ADVERTISE,
@@ -95,6 +95,10 @@ def connect_wlan():
 ble_results = {}
 scan_done = False
 
+#: Die BLE-Instanz des Controllers. MicroPython haengt sie nicht mehr unter
+#: `bluetooth.ble`, sie kommt aus `BLE()` und wird hier festgehalten.
+ble = None
+
 
 def ble_irq(event, data):
     global scan_done
@@ -141,10 +145,12 @@ def addr_str(addr):
 
 def scan_ble():
     """Ein BLE-Scanfenster. Liefert Liste von (mac, rssi, name, node_link)."""
+    if ble is None:
+        return []
     ble_results.clear()
     scan_done = False
     try:
-        bluetooth.ble.gap_scan(BLE_SCAN_MS, 20000, 11250, False)
+        ble.gap_scan(BLE_SCAN_MS, 20000, 11250, False)
     except Exception as exc:
         log("BLE-Scan-Start fehlgeschlagen: %s" % exc)
         return []
@@ -155,7 +161,7 @@ def scan_ble():
         time.sleep_ms(100)
         waited += 100
     try:
-        bluetooth.ble.gap_scan(None)  # Scan sicherheitshalber beenden
+        ble.gap_scan(None)  # Scan sicherheitshalber beenden
     except Exception:
         pass
     out = [(mac, rssi, name, link) for mac, (rssi, name, link) in ble_results.items()]
@@ -164,7 +170,7 @@ def scan_ble():
 
 def start_beacon():
     """Optionale BLE-Werbesendung, damit der Partner-Node unseren Abstand misst."""
-    if not BEACON_ADVERTISE or bluetooth is None:
+    if not BEACON_ADVERTISE or ble is None:
         return
     name = BEACON_NAME.encode()
     payload = bytes([len(name) + 1, _AD_COMPLETE_NAME]) + name
@@ -172,9 +178,9 @@ def start_beacon():
                   BEACON_COMPANY & 0xFF]) + NODE_ID.encode()
     flags = bytes([2, _AD_FLAGS, 0x06])  # LE General Discoverable + BR/ED nicht unterstützt
     try:
-        bluetooth.ble.active(True)
-        bluetooth.ble.config(gap_name=BEACON_NAME)
-        bluetooth.ble.gap_advertise(625000, adv_data=flags + manu + payload, connectable=False)
+        ble.active(True)
+        ble.config(gap_name=BEACON_NAME)
+        ble.gap_advertise(625000, adv_data=flags + manu + payload, connectable=False)
         log("Beacon aktiv: %s (%s)" % (BEACON_NAME, NODE_ID))
     except Exception as exc:
         log("Beacon nicht aktiv: %s" % exc)
@@ -191,23 +197,44 @@ def bssid_str(raw):
     return ":".join("%02X" % b for b in bytes(raw))
 
 
+def ap_entry(ap):
+    """Ein Scan-Ergebnis in (ssid, bssid, rssi) zerlegen.
+
+    Der rp2-Port liefert Tupel, keine Dictionaries. Die belegte Reihenfolge
+    ist (ssid, bssid, security, rssi, ?, kanal), ausgegeben auf dem Board:
+
+        (b'Chaotic', b'\\xb0\\xf2\\x08BD\\xf3', 1, -43, 7, 4)
+
+    Andere Ports liefern Dictionaries, deshalb wird beides akzeptiert.
+    """
+    if isinstance(ap, dict):
+        ssid = ap.get("ssid") or b""
+        bssid = ap.get("bssid") or b""
+        rssi = ap.get("signal", -100)
+    else:
+        ssid = ap[0] if len(ap) > 0 else b""
+        bssid = ap[1] if len(ap) > 1 else b""
+        rssi = ap[3] if len(ap) > 3 else -100
+    if isinstance(ssid, bytes):
+        ssid = ssid.decode("utf-8", "replace")
+    return (ssid, bssid_str(bssid), int(rssi))
+
+
 def scan_wifi():
     """WLAN-Vollscan. Liefert nur Access Points, keine WLAN-Clients."""
     wlan = network.WLAN(network.STA_IF)
     try:
-        aps = wlan.scan(None)
+        # Der rp2-Port nimmt kein Argument: wlan.scan(None) wirft einen Fehler.
+        aps = wlan.scan()
     except Exception as exc:
         log("WLAN-Scan-Fehler: %s" % exc)
         return []
     out = []
     for ap in aps:
-        rssi = int(ap.get("signal", -100))
+        ssid, bssid, rssi = ap_entry(ap)
         if rssi < RSSI_FLOOR:
             continue
-        ssid = ap.get("ssid") or ""
-        if isinstance(ssid, bytes):
-            ssid = ssid.decode("utf-8", "replace")
-        out.append((ssid, bssid_str(ap.get("bssid", b"")), rssi))
+        out.append((ssid, bssid, rssi))
     return out
 
 
@@ -216,8 +243,13 @@ def scan_wifi():
 # ---------------------------------------------------------------------------
 
 
-def post_json(payload):
-    """POST per rohem Socket, ohne requests-Modul."""
+def post_json(payload, versuche=2, timeout=5.0):
+    """POST per rohem Socket, ohne requests-Modul.
+
+    Zwei Versuche: direkt nach dem DHCP-Vergabe hat der CYW43-Treiber die
+    Routing-Tabelle manchmal noch nicht fertig, dann laeuft der erste Connect in
+    einen Timeout. Der zweite Versuch klappt dann sofort.
+    """
     data = json.dumps(payload).encode()
     head = (
         "POST %s HTTP/1.1\r\n"
@@ -227,26 +259,28 @@ def post_json(payload):
         "Connection: close\r\n\r\n"
     ) % (SERVER_PATH, SERVER_HOST, SERVER_PORT, len(data))
 
-    sock = None
-    try:
-        sock = socket.socket()
-        sock.settimeout(3.0)
-        sock.connect((SERVER_HOST, SERVER_PORT))
-        sock.sendall(head.encode() + data)
+    for attempt in range(versuche):
+        sock = None
         try:
-            sock.recv(64)
-        except OSError:
-            pass
-        return True
-    except OSError as exc:
-        log("Senden fehlgeschlagen: %s" % exc)
-        return False
-    finally:
-        if sock is not None:
+            sock = socket.socket()
+            sock.settimeout(timeout)
+            sock.connect((SERVER_HOST, SERVER_PORT))
+            sock.sendall(head.encode() + data)
             try:
-                sock.close()
+                sock.recv(64)
             except OSError:
                 pass
+            return True
+        except OSError as exc:
+            log("Senden fehlgeschlagen: %s" % exc)
+            time.sleep(1)
+        finally:
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -271,19 +305,18 @@ def build_payload():
     }
 
 
-def main():
-    log("Firmware %s, MicroPython %s" % (VERSION, sys.version))
+def run():
+    """Ein Durchlauf inklusive WLAN-Verbindung, danach endlos scannen und senden.
 
-    if bluetooth is None:
-        log("WARNUNG: kein bluetooth-Modul, nur WLAN-Scan")
-    else:
-        bluetooth.BLE()
-        bluetooth.ble.irq(ble_irq)
-        bluetooth.ble.active(True)
+    Wirft bei einem Verbindungsproblem nach außen, damit `main` neu starten kann.
+    """
+    # Ohne dieses `global` legt Python unten lokale Listen an, und `build_payload`
+    # bliebe auf den leeren Modulvariablen stehen: der Node sendet dann zwar
+    # erfolgreich, aber ohne Messwerte.
+    global ble_buffer, wifi_buffer
 
     wlan = connect_wlan()
     start_beacon()
-
     interval = 1.0 / SCAN_HZ if SCAN_HZ > 0 else 1.0
     cycle = 0
 
@@ -303,12 +336,20 @@ def main():
         cycle += 1
 
         # Abwechselnd scannen, das Ergebnis des anderen Typs wird mitgesendet.
-        if bluetooth is not None and cycle % 2 == 1:
+        if ble is not None and cycle % 2 == 1:
             ble_buffer = scan_ble()
         if cycle % (2 * max(1, WIFI_SCAN_EVERY)) == 0:
             wifi_buffer = scan_wifi()
 
-        if not post_json(build_payload()):
+        ok = post_json(build_payload())
+        if cycle % 20 == 0:
+            # Ohne Bildschirm ist die serielle Ausgabe die einzige Anzeige. Alle
+            # 20 Zyklen eine Zeile, damit ein stiller Node auffällt.
+            log(
+                "Zyklus %d: %d BLE, %d WLAN, gesendet %s"
+                % (cycle, len(ble_buffer), len(wifi_buffer), "ok" if ok else "nein")
+            )
+        if not ok:
             # Kurze Pause: Server down oder WLAN weg, nicht sofort neu scannen.
             time.sleep(2)
 
@@ -317,6 +358,38 @@ def main():
         rest = interval - (time.time() - started)
         if rest > 0.2:
             time.sleep(rest)
+
+
+def start_ble():
+    """BLE-Controller aktivieren. Liefert False, wenn das Board keinen Funk hat."""
+    global ble
+    if BLE is None:
+        return False
+    try:
+        ble = BLE()
+        ble.irq(ble_irq)
+        ble.active(True)
+    except Exception as exc:
+        ble = None
+        log("BLE nicht verfuegbar: %s" % exc)
+        return False
+    return True
+
+
+def main():
+    log("Firmware %s, MicroPython %s" % (VERSION, sys.version))
+
+    if not start_ble():
+        log("WARNUNG: kein bluetooth-Modul, nur WLAN-Scan")
+
+    # Ohne diesen Rahmen bleibt der Node bei einem WLAN-Problem beim ersten
+    # Aufruf stehen und macht nichts mehr, bis jemand das Kabel zieht.
+    while True:
+        try:
+            run()
+        except Exception as exc:
+            log("Abbruch (%r), neuer Versuch in 10 s" % exc)
+            time.sleep(10)
 
 
 main()

@@ -15,8 +15,8 @@ Node B (Pico 2 W) --/
 | Phase | Inhalt | Stand |
 |-------|--------|-------|
 | 1 | Server (`/ingest`, `/ws`, Weboberfläche), Simulator, Tests | fertig, läuft auf dem Pi |
-| 2/3 | Firmware für Pico 2 W (WLAN, BLE-Scan, Senden) | geschrieben, nicht getestet (kein Pico 2 W angeschlossen) |
-| 2/3 | Node für Linux im Pi 4 B (`pi-node/`) | fertig, läuft als Node A |
+| 2/3 | Firmware für Pico 2 W (WLAN, BLE-Scan, Senden) | läuft als Node A auf einem Pico 2 W |
+| 2/3 | Node für Linux im Pi 4 B (`pi-node/`) | läuft als Node B |
 | 4 | Kalibrierung mit echtem Test-Beacon | offen |
 | 5 | Autostart auf dem Pi | fertig (systemd, `enabled`) |
 | 6 | 3. Node, Heatmap, Verlauf | offen |
@@ -67,7 +67,10 @@ Speicher.
 
 ## Firmware auf den Pico
 
-Siehe [docs/hardware.md](docs/hardware.md) für das Flashen von MicroPython.
+Siehe [docs/hardware.md](docs/hardware.md) für das Flashen von MicroPython. Der
+Pico 2 W hat einen **BOOTSEL-Knopf**: gedrückt halten, USB-Kabel einstecken,
+`RPI_PICO2_W-…uf2` von <https://micropython.org/download/RPI_PICO2_W> auf das
+Laufwerk kopieren, Kabel abziehen und neu einstecken.
 
 Danach genügt ein Befehl — er prüft zuerst, ob das Board überhaupt WLAN kann:
 
@@ -79,12 +82,10 @@ bash tools/flash_node.sh /dev/ttyACM0
 Für Node B `firmware/common/config.py` mit `NODE_ID = "B"` und
 `BEACON_NAME = "RSSI-Node-B"` anpassen, dann das Skript erneut ausführen.
 
-## Node auf dem Pi statt auf dem Pico
+## Node auf dem Pi
 
-Solange kein Pico 2 W da ist, misst der Pi 4 B selbst: er hat WLAN und
-Bluetooth an Bord und sendet im selben Format wie die Firmware. Aktueller Stand
-sind 39 Geräte (BLE + Access Points) mit echten dBm-Werten, Node A läuft als
-systemd-Dienst `rssi-node`.
+Solange kein zweiter Pico 2 W da ist, misst der Pi 4 B selbst als Node B: er hat
+WLAN und Bluetooth an Bord und sendet im selben Format wie die Firmware.
 
 ```bash
 bash deploy/deploy.sh                                       # Code kopieren
