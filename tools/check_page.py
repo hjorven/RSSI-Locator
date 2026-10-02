@@ -3,7 +3,7 @@
 Startet Chrome mit Remote-Debugging, laedt die Seite, wartet auf echte
 WebSocket-Daten und liest danach Tabelle und Canvas aus.
 
-    python3 tools/check_page.py http://192.168.178.43:8099
+    python3 tools/check_page.py http://192.168.1.20:8099
 """
 
 from __future__ import annotations

@@ -1,18 +1,40 @@
+# node_modules, falls später mal eine Oberfläche dazukommt
+node_modules/
+*.log
+npm-debug.log*
+
+# Editoren
+.vscode/
+.idea/
+*.swp
+*~
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
+
 # Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
+*.egg-info/
 
 # Konfiguration mit WLAN-Passwörtern niemals einchecken
 firmware/common/config.py
 config.py
+settings.json
 
 # Kalibrierwerte des laufenden Geräts
 server/settings.json
 
 # MicroPython-Ports
 firmware/node/lib/
+
+# Firmware-Images
+*.uf2
+*.hex
 
 # Werkzeuge
 .pytest_cache/

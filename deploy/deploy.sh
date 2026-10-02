@@ -5,9 +5,12 @@
 #   bash deploy/deploy.sh logs       # Log folgen
 #   bash deploy/deploy.sh status     # Status und Health-Check
 #   bash deploy/deploy.sh uninstall  # Dienst entfernen
+#
+# Adresse des Pi anpassen, sonst wird der Vorgabewert benutzt:
+#   PI_HOST=192.168.1.20 bash deploy/deploy.sh
 set -euo pipefail
 
-PI_HOST="${PI_HOST:-192.168.178.43}"
+PI_HOST="${PI_HOST:-192.168.1.20}"
 PI_USER="${PI_USER:-pi}"
 REMOTE_DIR="${REMOTE_DIR:-/home/pi/rssi-locator}"
 SERVICE="rssi-locator"

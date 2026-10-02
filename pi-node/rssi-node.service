@@ -12,7 +12,7 @@ WorkingDirectory=/home/pi/rssi-locator/pi-node
 Environment=PYTHONUNBUFFERED=1
 Environment=NODE_ID=A
 Environment=IFACE=wlan0
-Environment=NODE_URL=http://192.168.178.43:8099/ingest
+Environment=NODE_URL=http://192.168.1.20:8099/ingest
 ExecStart=/home/pi/rssi-locator/pi-node/.venv/bin/python /home/pi/rssi-locator/pi-node/node.py --node ${NODE_ID} --iface ${IFACE} --url ${NODE_URL}
 Restart=always
 RestartSec=5

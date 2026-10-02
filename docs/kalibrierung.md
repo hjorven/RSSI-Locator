@@ -112,8 +112,8 @@ beim nächsten Speichern wieder angelegt.
 Nach einem Neustart prüfen, ob die Datei da ist und gültig ist:
 
 ```bash
-ssh pi@192.168.178.43 'cat ~/rssi-locator/server/settings.json'
-ssh pi@192.168.178.43 'systemctl status rssi-locator --no-pager' | grep -i settings
+ssh pi@192.168.1.20 'cat ~/rssi-locator/server/settings.json'
+ssh pi@192.168.1.20 'systemctl status rssi-locator --no-pager' | grep -i settings
 ```
 
 Ist die Datei weg oder unlesbar, startet der Server mit den Vorgaben und

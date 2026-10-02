@@ -10,7 +10,7 @@ Pico 2 W, Node B auf dem Pi 4 B selbst (`pi-node/`).
 | Ort | Rolle |
 |-----|-------|
 | Bazzite (Host) | Entwicklung, Pico 2 W per USB (`mpremote`) |
-| Raspberry Pi 4 B, `192.168.178.43`, User `pi` | Server-Betrieb (venv + systemd, Port 8099) **und** Node B (`rssi-node`) |
+| Raspberry Pi 4 B, `192.168.1.20`, User `pi` | Server-Betrieb (venv + systemd, Port 8099) **und** Node B (`rssi-node`) |
 
 Node A ist der **Pico 2 W** mit MicroPython 1.29.0 (`firmware/`), Node B der
 Linux-Node `pi-node/` auf dem Pi 4 B.
@@ -51,7 +51,7 @@ cd server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ## Simulator
 
 ```bash
-.venv/bin/python tools/simulate_nodes.py --url http://192.168.178.43:8099/ingest
+.venv/bin/python tools/simulate_nodes.py --url http://192.168.1.20:8099/ingest
 ```
 
 ## Prüfwerkzeuge
@@ -78,8 +78,8 @@ Der Node auf dem Pi wird nach dem Deploy einmalig installiert und läuft danach
 automatisch weiter:
 
 ```bash
-ssh pi@192.168.178.43 'bash /home/pi/rssi-locator/pi-node/install.sh'
-ssh pi@192.168.178.43 'sudo journalctl -u rssi-node -f'
+ssh pi@192.168.1.20 'bash /home/pi/rssi-locator/pi-node/install.sh'
+ssh pi@192.168.1.20 'sudo journalctl -u rssi-node -f'
 ```
 
 ## Datenformat Node → Server

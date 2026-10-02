@@ -207,7 +207,7 @@ def ap_entry(ap):
     Der rp2-Port liefert Tupel, keine Dictionaries. Die belegte Reihenfolge
     ist (ssid, bssid, security, rssi, ?, kanal), ausgegeben auf dem Board:
 
-        (b'Chaotic', b'\\xb0\\xf2\\x08BD\\xf3', 1, -43, 7, 4)
+        (b'MEIN_WLAN', b'\\xaa\\xbb\\xcc\\xdd\\xee\\xff', 1, -43, 7, 4)
 
     Andere Ports liefern Dictionaries, deshalb wird beides akzeptiert.
     """

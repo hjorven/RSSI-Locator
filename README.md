@@ -10,6 +10,18 @@ Node A (Pico 2 W) --\
 Node B (Pico 2 W) --/
 ```
 
+## Wofür das gedacht ist
+
+WLAN-Tracker zeigen normalerweise nur den Access Point, mit dem ein Gerät
+verbunden ist — nicht, wo das Gerät im Raum steht. RSSI-Locator macht das
+umgekehrt: Er nimmt *alle* Access Points im Umfeld als Gehilfen, vermisst sie
+von zwei Seiten aus und berechnet daraus, wo ein Gerät ungefähr liegt. Ohne
+Zusatz-Hardware, ohne App im Gerät, ohne Tracking-Consent.
+
+Das ist eine **RSSI-Schätzung, keine Ortung.** Sie ersetzt kein GPS und keine
+genehmigungspflichtige Ortung. Zweck: eigene Geräte im eigenen Zuhause finden —
+Schlüssel, Tracker-Tags, Geräte, die man gerade sucht.
+
 ## Status
 
 | Phase | Inhalt | Stand |
@@ -39,10 +51,15 @@ server/.venv/bin/python tools/simulate_nodes.py --url http://127.0.0.1:8099/inge
 # Browser: http://127.0.0.1:8099/
 ```
 
+Der Simulator erfragt die Node-Geometrie beim Server, rechnet also mit derselben
+Anordnung wie die Oberfläche. Mit `--nodes TEST-A,TEST-B --node-position
+TEST-A:0,1 --node-position TEST-B:0,3` lässt er sich neben echten Nodes laufen
+lassen, ohne deren Messreihen zu verfälschen.
+
 ### Tests
 
 ```bash
-python3 server/tests/test_positioning.py     # 33 Tests, ohne pytest
+python3 server/tests/test_positioning.py     # 41 Tests, ohne pytest
 python3 pi-node/test_node.py                 # 8 Tests, ohne pytest
 server/.venv/bin/python server/tests/smoke.py http://127.0.0.1:8099   # inkl. WebSocket
 server/.venv/bin/python tools/check_page.py http://127.0.0.1:8099      # Browser prüfen
@@ -64,6 +81,9 @@ bash deploy/deploy.sh uninstall
 Der Server läuft danach als systemd-Dienst `rssi-locator` auf Port 8099 und
 startet automatisch nach einem Neustart. Kein Docker, keine Datenbank, ~46 MB
 Speicher.
+
+In `deploy/deploy.sh` oben die Zugangsdaten für den Pi anpassen (`PI_USER`,
+`PI_HOST`).
 
 ## Firmware auf den Pico
 
@@ -89,8 +109,8 @@ WLAN und Bluetooth an Bord und sendet im selben Format wie die Firmware.
 
 ```bash
 bash deploy/deploy.sh                                       # Code kopieren
-ssh pi@192.168.178.43 'bash /home/pi/rssi-locator/pi-node/install.sh'
-ssh pi@192.168.178.43 'sudo journalctl -u rssi-node -f'      # Log
+ssh pi@192.168.1.20 'bash /home/pi/rssi-locator/pi-node/install.sh'
+ssh pi@192.168.1.20 'sudo journalctl -u rssi-node -f'      # Log
 ```
 
 Details in [docs/hardware.md](docs/hardware.md#zwischenlösung-der-pi-4-b-als-node).
@@ -100,6 +120,15 @@ Details in [docs/hardware.md](docs/hardware.md#zwischenlösung-der-pi-4-b-als-no
 Siehe [docs/kalibrierung.md](docs/kalibrierung.md). Ohne Kalibrierung sind die
 angezeigten Meterzahlen nur eine grobe Skala, die Einstellungen `RSSI 1 m` und
 `n` lassen sich aber live im Browser korrigieren.
+
+Der **Nodeabstand D** ist der wichtigste Wert, weil er über die Genauigkeit
+entscheidet: bei 45 cm zwischen den Nodes liegt der mittlere Positionsfehler bei
+1,9 m, bei 2 m nur noch bei 1,1 m. Faustregel: D etwa halb so groß wie der
+größte Abstand, den du messen willst. Die Tabelle mit Messwerten steht in der
+Kalibrierungsdoku.
+
+Die Einstellungen werden in `server/settings.json` gespeichert und überstehen
+Neustart und Deployment. Messdaten bleiben nur im Arbeitsspeicher.
 
 ## Ehrliche Grenzen
 
@@ -111,3 +140,32 @@ angezeigten Meterzahlen nur eine grobe Skala, die Einstellungen `RSSI 1 m` und
 - Die Ellipsen zeigen die 95-%-Unsicherheit aus der RSSI-Streuung, nicht aus
   Reflexionen und Abschirmung im Raum. In Gebäuden streuen die Werte stärker als
   das Modell annimmt.
+- Geräte, die nur ein einziger Node sieht, haben keine Position. Sie stehen in
+  der Liste, aber nicht auf der Karte. Aus einem Abstand allein folgt keine
+  Richtung.
+- `max_distance` (Vorgabe 12 m) begrenzt den Messbereich. Dahinter liefern
+  schwache Signale nur noch "irgendwo jenseits der Grenze" und werden verworfen.
+- BLE-Geräte mit MAC-Randomisierung erscheinen bei jedem Scan unter neuer
+  Adresse. Für die Ortung sind Geräte mit Namen oder festem Beacon brauchbarer.
+
+## Sicherheit und Datenschutz
+
+- Der Server hört nur auf dem Pi. Es gibt keine Weiterleitung nach außen.
+- Der Pico sendet nur RSSI-Werte und MAC-Adressen, keine Inhalte.
+- Wer den Server ins Internet stellt, braucht TLS und Authentifizierung. Beides
+  ist nicht enthalten.
+
+## Beiträge
+
+Pull Requests willkommen. Vor dem Absenden bitte:
+
+```bash
+server/.venv/bin/python -m pytest server/tests pi-node   # muss grün sein
+```
+
+Bitte keine echten SSIDs, WLAN-Passwörter oder BSSIDs committen — dafür gibt es
+`firmware/common/config.example.py`.
+
+## Lizenz
+
+MIT, siehe [LICENSE](LICENSE).

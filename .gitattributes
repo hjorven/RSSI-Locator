@@ -1,0 +1,16 @@
+* text=auto eol=lf
+
+# Python-Dateien dürfen im Browser nicht als Text angezeigt werden
+*.py text diff=python
+
+# Shellskripte
+*.sh text eol=lf
+
+# HTML mit Syntax-Hervorhebung
+*.html text diff=html
+
+# Keine Binärdateien im Repository, aber falls doch: nicht als Text diffen
+*.uf2 binary
+*.bin binary
+*.png binary
+*.jpg binary

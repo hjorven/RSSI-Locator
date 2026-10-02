@@ -15,7 +15,7 @@ WLAN_MAX_RETRIES = 20        # Verbindungsversuche je Start
 WLAN_TIMEOUT_MS = 15000      # Verbindungs-Timeout pro Versuch
 
 # --- Server -----------------------------------------------------------------
-SERVER_HOST = "192.168.178.43"
+SERVER_HOST = "192.168.1.20"
 SERVER_PORT = 8099
 SERVER_PATH = "/ingest"
 

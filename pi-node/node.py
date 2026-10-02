@@ -188,7 +188,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="RSSI-Locator Node fuer Linux")
     parser.add_argument("--node", default="A", help="Node-Kennung, z. B. A")
     parser.add_argument("--iface", default="wlan0", help="WLAN-Schnittstelle")
-    parser.add_argument("--url", default="http://192.168.178.43:8099/ingest")
+    parser.add_argument("--url", default="http://192.168.1.20:8099/ingest")
     parser.add_argument("--ble-timeout", type=float, default=5.0)
     parser.add_argument(
         "--wifi-every", type=int, default=2, help="WLAN-Scan alle n Zyklen"

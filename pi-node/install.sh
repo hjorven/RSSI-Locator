@@ -11,7 +11,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="${DIR}/.venv"
 SERVICE="rssi-node"
-URL="${NODE_URL:-http://192.168.178.43:8099/ingest}"
+URL="${NODE_URL:-http://192.168.1.20:8099/ingest}"
 
 case "${1:-install}" in
 

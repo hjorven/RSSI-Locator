@@ -51,7 +51,7 @@ weil der Pico die mobilen Node A mit den WLAN-Zugangsdaten ist.
 
 ```bash
 bash deploy/deploy.sh                 # Code auf den Pi kopieren
-ssh pi@192.168.178.43 'bash /home/pi/rssi-locator/pi-node/install.sh'
+ssh pi@192.168.1.20 'bash /home/pi/rssi-locator/pi-node/install.sh'
 ```
 
 Der Dienst `rssi-node` läuft danach dauerhaft, ebenso wie der Server. Er
@@ -132,7 +132,7 @@ Anzeige der serielle Log, deshalb gibt der Node alle 20 Zyklen eine Zeile aus:
 
 ```
 [A] Firmware 1.0.0, MicroPython 3.4.0; MicroPython v1.29.0 on 2026-08-24
-[A] WLAN verbunden: Chaotic, IP 192.168.178.161
+[A] WLAN verbunden: MEIN_WLAN, IP 192.168.1.30
 [A] Beacon aktiv: RSSI-Node-A (A)
 [A] Zyklus 20: 22 BLE, 3 WLAN, gesendet ok
 ```

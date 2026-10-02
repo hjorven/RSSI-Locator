@@ -20,11 +20,11 @@ SCAN = """BSS aa:bb:cc:dd:ee:01(on wlan0)
 \tfreq: 2412
 \tRSSI: -45.00 dBm
 \tsignal: -45.00 dBm
-\tSSID: Chaotic
+\tSSID: MEIN_WLAN
 BSS AA:BB:CC:DD:EE:02(on wlan0)
 \tfreq: 5180
 \tsignal: -72.40 dBm
-\tSSID: Gastnetz
+\tSSID: GASTNETZ
 BSS aa:bb:cc:dd:ee:03(on wlan0)
 \tfreq: 2437
 \tsignal: -60.00 dBm
@@ -41,8 +41,8 @@ BSS aa:bb:cc:dd:ee:05(on wlan0)
 def test_parse_iw_scan():
     aps = parse_iw_scan(SCAN)
     assert aps == [
-        ("Chaotic", "AA:BB:CC:DD:EE:01", -45),
-        ("Gastnetz", "AA:BB:CC:DD:EE:02", -72),
+        ("MEIN_WLAN", "AA:BB:CC:DD:EE:01", -45),
+        ("GASTNETZ", "AA:BB:CC:DD:EE:02", -72),
         ("", "AA:BB:CC:DD:EE:03", -60),
     ], aps
 
@@ -78,14 +78,14 @@ def test_build_payload():
     payload = build_payload(
         "A",
         [("C4:7F:0E:CD:65:C9", -49, "MOZA")],
-        [("Chaotic", "AA:BB:CC:DD:EE:01", -45)],
+        [("MEIN_WLAN", "AA:BB:CC:DD:EE:01", -45)],
         1727800000,
     )
     assert payload["node"] == "A"
     assert payload["ts"] == 1727800000
     assert payload["ble"] == [{"mac": "C4:7F:0E:CD:65:C9", "rssi": -49, "name": "MOZA"}]
     assert payload["wifi"] == [
-        {"ssid": "Chaotic", "bssid": "AA:BB:CC:DD:EE:01", "rssi": -45}
+        {"ssid": "MEIN_WLAN", "bssid": "AA:BB:CC:DD:EE:01", "rssi": -45}
     ]
 
 
