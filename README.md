@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # RSSI-Locator
 
 Zwei Raspberry Pi Pico 2 W messen die Signalstärke (RSSI) von BLE-Geräten und
@@ -169,3 +170,6 @@ Bitte keine echten SSIDs, WLAN-Passwörter oder BSSIDs committen — dafür gibt
 ## Lizenz
 
 MIT, siehe [LICENSE](LICENSE).
+=======
+# RSSI-Locator
+>>>>>>> origin/main
