@@ -88,6 +88,7 @@
   </div>
   <button id="apply">Übernehmen</button>
   <button id="reset">Filter zurücksetzen</button>
+  <button id="fit">Ausschnitt anpassen (f)</button>
   <p class="hint">
     Ellipsen zeigen die 95-%-Unsicherheit. Gestrichelt: mit zwei Nodes ist die
     Position nur gespiegelt bestimmt. Gelber Ring: die Messungen widersprechen
@@ -104,9 +105,15 @@ const ctx = canvas.getContext("2d");
 
 // Weltkoordinaten (Meter) -> Bildschirm. A liegt immer links unten.
 const view = { minX: -1.5, maxX: 5.5, minY: -1.5, maxY: 4.5 };
+//: Geräte mit einer Unsicherheit darüber beim Anpassen des Ausschnitts ignorieren.
+const FIT_MAX_UNCERTAINTY = 6.0;
 let state = null;
 window.state = null;  // für automatisierte Prüfungen (tools/check_page.py)
 let hover = null;
+//: Der Ausschnitt wird nur einmal beim ersten Datenempfang gesetzt. Bei jedem
+//: Update neu anpassen lassen ihn springen, weil Geräte mit 20 m Abstand
+//: kommen und gehen. Taste f oder der Knopf passt ihn bewusst neu an.
+let viewInitialised = false;
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -119,9 +126,12 @@ resize();
 
 function fitToData() {
   if (!state) return;
-  const pts = [];
-  state.nodes.forEach(n => pts.push([n.x, n.y]));
-  state.devices.filter(d => d.ok).forEach(d => pts.push([d.x, d.y]));
+  // Nur Geräte mit brauchbarer Unsicherheit einbeziehen. Ein Nachbargerät
+  // hinter zwei Wänden landet bei 30 m und würde das Sichtfeld so aufweiten,
+  // dass die beiden Nodes nur noch zwei Pixel auseinanderliegen.
+  const pts = state.nodes.map(n => [n.x, n.y]);
+  state.devices.filter(d => d.ok && d.rx <= FIT_MAX_UNCERTAINTY && d.ry <= FIT_MAX_UNCERTAINTY)
+    .forEach(d => pts.push([d.x, d.y]));
   if (pts.length < 2) return;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const [x, y] of pts) {
@@ -131,6 +141,7 @@ function fitToData() {
   const margin = 1.2;
   view.minX = minX - margin; view.maxX = maxX + margin;
   view.minY = minY - margin; view.maxY = maxY + margin;
+  draw();
 }
 
 function toPx(x, y) {
@@ -258,6 +269,11 @@ function drawScale(w, h) {
 function renderTable() {
   const body = $("devbody");
   const devs = state ? state.devices : [];
+  // innerHTML baut alle Zeilen neu und setzt dabei den Scrollstand der
+  // Seitenleiste zurück. Deshalb vorher merken und danach wiederherstellen,
+  // sonst springt die Liste bei jedem Update nach oben.
+  const aside = body.closest("aside");
+  const scroll = aside ? aside.scrollTop : 0;
   if (!devs.length) {
     body.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">keine Daten</td></tr>';
     return;
@@ -280,6 +296,7 @@ function renderTable() {
       `<td class="num">${pos}</td></tr>`;
   });
   body.innerHTML = rows.join("");
+  if (aside) aside.scrollTop = scroll;
 }
 
 function renderStatus() {
@@ -339,7 +356,7 @@ function connect() {
     state = JSON.parse(ev.data);
     window.state = state;
     fillSettings(state.settings);
-    fitToData();
+    if (!viewInitialised) { fitToData(); viewInitialised = true; }
     renderStatus();
     renderTable();
     draw();
@@ -347,8 +364,9 @@ function connect() {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "f") { fitToData(); draw(); }
+  if (e.key === "f") { fitToData(); }
 });
+$("fit").addEventListener("click", () => fitToData());
 
 connect();
 setInterval(draw, 1000);  // Canvas-Größe kann sich ohne Datenänderung ändern

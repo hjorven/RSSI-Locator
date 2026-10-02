@@ -251,7 +251,7 @@ class Settings:
     stale_after: float = 10.0
     drop_after: float = 120.0
     node_offline_after: float = 12.0
-    max_distance: float = 30.0
+    max_distance: float = 12.0
 
     def to_dict(self) -> Dict[str, float]:
         return {
@@ -334,6 +334,9 @@ class Source:
     filter: RssiFilter
     last_seen: float
     distance: float = 0.0
+    #: Ungekappte Distanz laut RSSI. Nur zur Plausibilitaetspruefung, die
+    #: Position rechnet mit `distance`.
+    raw_distance: float = 0.0
     sigma_rssi: float = 0.0
 
     @property
@@ -488,10 +491,11 @@ class Locator:
             return
         for src in device.sources.values():
             src.sigma_rssi = max(s.min_sigma_rssi, src.filter.sigma)
-            src.distance = min(
-                rssi_to_distance(src.rssi, *self._model(device.kind)),
-                s.max_distance,
-            )
+            # Fuer die Plausibilitaet der Position brauchen wir die ungekappte
+            # Distanz: bei -101 dBm liegt das Geraet 48 m entfernt, die Kappung
+            # auf max_distance wuerde daraus eine scheinbar saubere 15 m machen.
+            src.raw_distance = rssi_to_distance(src.rssi, *self._model(device.kind))
+            src.distance = min(src.raw_distance, s.max_distance)
         sigmas = [
             distance_sigma(src.distance, src.sigma_rssi, self._model(device.kind)[1])
             for src in recent
@@ -502,9 +506,80 @@ class Locator:
         else:
             self._solve_least_squares(device, recent, sigmas)
 
+        if device.position_ok and self._too_far(device, recent):
+            # Die Position liegt weiter weg als die eigene Grenze zulaesst. Bei
+            # einem schwachen Signal wurde die Distanz auf `max_distance`
+            # gekappt, die Messung beschreibt dann kein Gerät mehr, sondern nur
+            # noch "irgendwo jenseits der Grenze". Solche Punkte wuerden sonst das
+            # Kartenausschnitt auf 30 m aufweiten und die Nodes auf zwei Pixel
+            # zusammenschieben.
+            device.position_ok = False
+            device.consistent = False
+            return
+
+        if device.position_ok and len(recent) == 2 and not device.consistent:
+            # Zwei Knoten, deren Kreise sich nicht schneiden: |d_a - d_b| ist
+            # groesser als der Knotenabstand. Die Loesung liegt dann zwingend auf
+            # der Basislinie und ist frei erfunden — sie entspricht einem
+            # Widerspruch zwischen den beiden Messungen. Als Position ausgeben
+            # waere sie Schaetzglueck, und genau solche Punkte wuerden die Karte
+            # auf 20 m aufweiten.
+            device.position_ok = False
+            return
+
+        if device.position_ok and self._zu_unsicher(device, recent):
+            # rx oder ry ist so gross, dass die Position nichts mehr bedeutet:
+            # Bei 268 m Unsicherheit und x = 15 m ist der Punkt reine Fiktion.
+            # Solche Geraete sieht man in der Liste, aber nicht auf der Karte —
+            # sonst dehnen sie den Kartenausschnitt auf und zu und schieben die
+            # beiden Nodes auf zwei Pixel zusammen.
+            device.position_ok = False
+            return
+
         if device.position_ok:
             device.x = device._fx.update(device.x)
             device.y = device._fy.update(device.y)
+
+    def _too_far(self, device: Device, recent: List[Source]) -> bool:
+        """Ist mindestens eine Messung so schwach, dass die Position nichts taugt?
+
+        Geprueft wird die ungekappte Distanz: liegt ein Geraet echt weiter weg
+        als `max_distance`, beschreibt der RSSI nur noch "ausserhalb des
+        Messbereichs". Die gekappte Distanz waere zwar geometrisch verwendbar,
+        die Position aber frei erfunden.
+        """
+        grenze = self.settings.max_distance
+        return any(src.raw_distance > grenze for src in recent)
+
+    def _zu_unsicher(self, device: Device, recent: List[Source]) -> bool:
+        """Trägt die Unsicherheit die Position noch?
+
+        Der Sonderfall sind gleiche Distanzen: dann liegt das Geraet auf der
+        Mittelsenkrechten, und ihre Laenge ist sqrt(d^2 - (D/2)^2). Weil D klein
+        ist, ist das fast d und damit sehr instabil — die Unsicherheit in y waechst
+        mit d/D. Deshalb gilt die y-Unsicherheit als Grenze, nicht rx: der
+        Anteil D/D in rx waere auch bei guten Messungen immer gross.
+        """
+        if len(recent) < 2:
+            # Ein einzelner Knoten liefert nur einen Abstand, keine Richtung.
+            # Die Position ist ein Punkt auf der Basislinie mit ry = voller
+            # Distanz, also geraten. Solche Geraete stehen weiterhin in der
+            # Liste, aber nicht auf der Karte.
+            return True
+        ids = sorted(self.nodes.keys())
+        if len(ids) < 2:
+            return True
+        ax, ay = self.node_position(ids[0])
+        bx, by = self.node_position(ids[1])
+        basislinie = math.hypot(bx - ax, by - ay)
+        if basislinie < 1e-9:
+            return True
+        # Abstand der Position zur Verbindungsgeraden der beiden Knoten.
+        zur_basislinie = abs((bx - ax) * (device.y - ay) - (by - ay) * (device.x - ax))
+        quer = zur_basislinie / basislinie
+        # ry > 1.5 * quer heisst: die Unsicherheit quer zur Basislinie ist groesser
+        # als der geschaetzte Abstand selbst, die Lage ist also nicht belegt.
+        return device.ry > 1.5 * max(quer, 0.5)
 
     def reset_filters(self) -> None:
         """Alle Filter verwerfen — nötig, wenn sich Kalibrierwerte stark ändern."""

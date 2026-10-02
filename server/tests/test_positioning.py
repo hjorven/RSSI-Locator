@@ -200,6 +200,72 @@ def test_settings_update_and_clamp():
     assert s.drop_after > s.stale_after
 
 
+def test_widerspruechliche_messungen_liefern_keine_position():
+    """Zwei Knoten, deren Kreise sich nicht schneiden, ergeben keine Position.
+
+    Bei |d_a - d_b| > D gibt es keinen Punkt, der zu beiden Distanzen passt. Die
+    Loesung liegt dann auf der Basislinie und ist frei erfunden. Solche Punkte
+    wuerden die Karte sonst auf 20 m aufweiten.
+    """
+    loc = Locator()
+    loc.settings.update({"node_distance": 1.5, "max_distance": 30.0})
+    mac = "AA:BB:CC:DD:EE:02"
+    for _ in range(20):
+        # A sieht das Geraat 22.9 m, B nur 13.2 m entfernt. Die Differenz von
+        # 9.7 m ist groesser als der Knotenabstand: widerspruechlich.
+        loc.ingest("A", ble=[{"mac": mac, "rssi": _rssi_at(22.9)}], wifi=[])
+        loc.ingest("B", ble=[{"mac": mac, "rssi": _rssi_at(13.2)}], wifi=[])
+    loc.recompute()
+    dev = next(iter(loc.devices.values()))
+    assert not dev.position_ok, "widerspruechliche Messung darf keine Position liefern"
+
+
+def test_konsistente_messung_am_knotenabstand_bleibt_gueltig():
+    """Der Gegenfall: |d_a - d_b| knapp unter D ist noch eine echte Position."""
+    loc = Locator()
+    loc.settings.update({"node_distance": 1.5, "max_distance": 30.0})
+    mac = "AA:BB:CC:DD:EE:03"
+    for _ in range(20):
+        loc.ingest("A", ble=[{"mac": mac, "rssi": _rssi_at(3.0)}], wifi=[])
+        loc.ingest("B", ble=[{"mac": mac, "rssi": _rssi_at(2.4)}], wifi=[])
+    loc.recompute()
+    dev = next(iter(loc.devices.values()))
+    assert dev.position_ok
+    assert dev.consistent
+
+
+def test_position_zu_fern_wird_verworfen():
+    """Ein Geraet jenseits von max_distance liefert keine Position.
+
+    Sonst wuerden Nachbargeraete hinter Waenden den Kartenausschnitt auf 30 m
+    aufweiten und die beiden Nodes auf zwei Pixel zusammenschieben.
+    """
+    loc = Locator()
+    loc.settings.update({"node_distance": 2.0, "max_distance": 15.0})
+    mac = "AA:BB:CC:DD:EE:FF"
+    for _ in range(20):
+        for nid in ("A", "B"):
+            # RSSI entspricht weit jenseits von 15 m
+            loc.ingest(nid, ble=[{"mac": mac, "rssi": -101}], wifi=[])
+    loc.recompute()
+    dev = next(iter(loc.devices.values()))
+    assert not dev.position_ok, "Geraet bei -101 dBm darf keine Position bekommen"
+    assert not dev.consistent
+
+
+def test_position_innerhalb_der_grenze_bleibt_gueltig():
+    loc = Locator()
+    loc.settings.update({"node_distance": 2.0, "max_distance": 15.0})
+    mac = "AA:BB:CC:DD:EE:01"
+    for _ in range(20):
+        for nid in ("A", "B"):
+            loc.ingest(nid, ble=[{"mac": mac, "rssi": _rssi_at(3.0)}], wifi=[])
+    loc.recompute()
+    dev = next(iter(loc.devices.values()))
+    assert dev.position_ok
+    assert math.hypot(dev.x - 1.0, dev.y - 1.0) < 2.0
+
+
 def test_settings_save_and_load_roundtrip():
     with tempfile.TemporaryDirectory() as tmp:
         pfad = Path(tmp) / "settings.json"
@@ -279,14 +345,36 @@ def test_locator_uncertainty_grows_with_noise():
 
 
 def test_locator_single_node_marks_ambiguous():
+    """Ein einzelner Knoten liefert eine Distanz, aber keine Position.
+
+    Frueher bekam das Geraet einen Punkt auf der Basislinie mit ry = voller
+    Distanz. Auf der Karte lagen solche Punkte dann bis 30 m draussen und
+    dehnten den Ausschnitt so weit, dass die beiden Nodes nur noch zwei Pixel
+    auseinanderlagen. Jetzt bleibt das Geraet in der Liste, aber ohne Position.
+    """
     loc = Locator(Settings(node_distance=4.0, position_alpha=1.0))
     for _ in range(5):
         loc.ingest("A", [{"mac": "11:22:33:44:55:66", "rssi": _rssi_at(3.0)}], [])
         loc.recompute()
     dev = loc.devices["ble:11:22:33:44:55:66"]
-    assert dev.position_ok and dev.mirrored and dev.consistent
-    assert approx(dev.x, 3.0, 0.2)  # Distanz entlang der Basislinie abgetragen
+    assert not dev.position_ok, "ein Knoten allein ergibt keine Position"
+    assert approx(dev.x, 3.0, 0.2)  # Distanz bleibt als Anzeige erhalten
     assert dev.ry > 2.0  # Ring um den Node, weil die Position unbestimmt ist
+
+
+def test_locator_zwei_knoten_liefern_position():
+    """Gegenfall zu obigem Test: mit zwei Knoten ist die Position bestimmt."""
+    loc = Locator(Settings(node_distance=4.0, position_alpha=1.0))
+    for _ in range(10):
+        loc.ingest("A", [{"mac": "11:22:33:44:55:77", "rssi": _rssi_at(3.0)}], [])
+        loc.ingest("B", [{"mac": "11:22:33:44:55:77", "rssi": _rssi_at(3.0)}], [])
+        loc.recompute()
+    dev = loc.devices["ble:11:22:33:44:55:77"]
+    assert dev.position_ok
+    assert approx(dev.x, 2.0, 0.3)   # Mitte der Basislinie
+    # Beide Knoten sehen 3.0 m, also liegt das Geraet auf der Mittelsenkrechten
+    # bei x = 2.0 mit y = sqrt(3^2 - 2^2) = 2.24 m.
+    assert approx(dev.y, math.sqrt(3.0 ** 2 - 2.0 ** 2), 0.2)
 
 
 def test_locator_three_nodes_uses_least_squares():
@@ -384,10 +472,11 @@ def test_locator_stale_source_ignored():
     loc.ingest("B", [{"mac": "AA:00:00:00:00:06", "rssi": _rssi_at(3.5)}], [], now=now - 30)
     loc.recompute()
     dev = loc.devices["ble:AA:00:00:00:00:06"]
-    assert dev.position_ok
-    # Nur noch Node A zaehlt -> nur eine Distanz bekannt
+    # Nur noch Node A zaehlt -> nur eine Distanz bekannt, also keine Position
     recent = [s for s in dev.sources.values() if now - s.last_seen <= 5.0]
     assert len(recent) == 1 and recent[0].node == "A"
+    assert approx(recent[0].filter.smoothed, _rssi_at(2.0), 0.01)
+    assert not dev.position_ok
 
 
 def test_locator_respects_max_distance():
