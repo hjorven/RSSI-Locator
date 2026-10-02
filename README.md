@@ -83,8 +83,9 @@ Der Server läuft danach als systemd-Dienst `rssi-locator` auf Port 8099 und
 startet automatisch nach einem Neustart. Kein Docker, keine Datenbank, ~46 MB
 Speicher.
 
-In `deploy/deploy.sh` oben die Zugangsdaten für den Pi anpassen (`PI_USER`,
-`PI_HOST`).
+In `deploy/deploy.local.sh` die Adresse des eigenen Pi eintragen (die Datei steht
+in `.gitignore` und wird nicht mitverteilt). Ohne diese Datei greift
+`192.168.1.20`; für ein einzelnes Deployment überschreibt `PI_HOST=…` beides.
 
 ## Firmware auf den Pico
 

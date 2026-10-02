@@ -26,6 +26,9 @@ firmware/common/config.py
 config.py
 settings.json
 
+# Eigene Adresse des Pi für deploy.sh
+deploy/deploy.local.sh
+
 # Kalibrierwerte des laufenden Geräts
 server/settings.json
 

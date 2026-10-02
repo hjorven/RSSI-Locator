@@ -1,0 +1,11 @@
+# Lokale Einstellungen fuer deploy/deploy.sh
+#
+# Kopieren nach deploy/deploy.local.sh und die Adresse des eigenen Pi eintragen.
+# deploy.local.sh steht in .gitignore und wird nicht mitverteilt.
+#
+# PI_HOST  Adresse des Raspberry Pi im WLAN
+# PI_USER  Benutzer auf dem Pi
+# PI_PORT  Port des Servers, Vorgabe 8099
+
+PI_HOST=192.168.1.20
+PI_USER=pi

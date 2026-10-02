@@ -6,17 +6,31 @@
 #   bash deploy/deploy.sh status     # Status und Health-Check
 #   bash deploy/deploy.sh uninstall  # Dienst entfernen
 #
-# Adresse des Pi anpassen, sonst wird der Vorgabewert benutzt:
+# Adresse des Pi: einmalig in deploy/deploy.local.sh eintragen (steht nicht im
+# Git) oder pro Aufruf als Variable setzen:
 #   PI_HOST=192.168.1.20 bash deploy/deploy.sh
+# Fuer fremde Installationen zuerst deploy/deploy.local.sh.example anlegen.
 set -euo pipefail
 
-PI_HOST="${PI_HOST:-192.168.1.20}"
-PI_USER="${PI_USER:-pi}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Einmal pro Rechner: deploy/deploy.local.sh (nicht im Git) wird zuerst
+# geladen. Ein explizit gesetzter PI_HOST gewinnt trotzdem, damit man fuer einen
+# einzelnen Aufruf ein anderes Gerat ansprechen kann.
+_env_host="${PI_HOST:-}"
+_env_user="${PI_USER:-}"
+_env_port="${PI_PORT:-}"
+if [ -f "${ROOT}/deploy/deploy.local.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${ROOT}/deploy/deploy.local.sh"
+fi
+
+PI_HOST="${_env_host:-${PI_HOST:-192.168.1.20}}"
+PI_USER="${_env_user:-${PI_USER:-pi}}"
+
 REMOTE_DIR="${REMOTE_DIR:-/home/pi/rssi-locator}"
 SERVICE="rssi-locator"
-PORT="8099"
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PORT="${_env_port:-${PI_PORT:-8099}}"
 SSH=(ssh -o ConnectTimeout=8 "${PI_USER}@${PI_HOST}")
 
 case "${1:-deploy}" in
